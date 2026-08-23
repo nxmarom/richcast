@@ -104,7 +104,7 @@ db <- build_taxon_db(
   traits = rodent_traits
 )
 #> ℹ Reading 'data_0.shp'
-#> ✔ Reading 'data_0.shp' [1s]
+#> ✔ Reading 'data_0.shp' [1.1s]
 #> 
 #> ℹ Dissolving 3090 features into 2345 species ranges.
 #> ! Spherical union failed on invalid geometry; retrying in planar mode.
@@ -466,15 +466,19 @@ res$species |>
 #> 1      32           32 TRUE
 ```
 
-To compare species with very different range sizes, standardise each
-trajectory:
+To compare species with very different range sizes, put each trajectory in
+units of its own standard deviation. Note that this divides by the SD without
+subtracting the mean: `scale()` would do both, which moves zero to *average
+change across the series* while it still looks like *no change from present* --
+and if most slices were smaller than today, every taxon then appears to sit a
+full standard deviation above the line for purely arithmetic reasons.
 
 
 ``` r
 traj <- res$species |>
   group_by(species) |>
   filter(stats::sd(delta_from_present, na.rm = TRUE) > 0) |>
-  mutate(z = as.numeric(scale(delta_from_present))) |>
+  mutate(z = delta_from_present / stats::sd(delta_from_present, na.rm = TRUE)) |>
   ungroup()
 ```
 
@@ -492,8 +496,9 @@ ggplot(traj, aes(y = time, x = z, group = species)) +
   geom_step(orientation = "y") +
   scale_y_continuous(breaks = seq(850, 1850, by = 200)) +
   facet_wrap(~species, ncol = 5) +
-  labs(x = "Standardised change from present", y = "Year CE",
-       title = "Range-size trajectories, standardised per species") +
+  labs(x = "Change from present (SD units)", y = "Year CE",
+       title = "Range-size trajectories, per species",
+       subtitle = "Grey line: same extent as present") +
   theme_bw()
 ```
 
@@ -510,7 +515,7 @@ traj |>
   geom_hline(yintercept = 1350, colour = "red", linetype = "dashed") +
   geom_step(orientation = "y", linewidth = 1.3) +
   scale_y_continuous(breaks = seq(850, 1850, by = 100)) +
-  labs(x = "Standardised change from present", y = "Year CE") +
+  labs(x = "Change from present (SD units)", y = "Year CE") +
   ggtitle("Marmota_baibacina") +
   theme_bw()
 ```
