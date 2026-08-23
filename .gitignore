@@ -1,0 +1,17 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+docs/
+*.tar.gz
+*.Rcheck/
+
+# Never commit third-party range or climate data. IUCN Red List data in
+# particular may not be redistributed (Terms of Use v3, section 4).
+data-raw/iucn/
+data-raw/climate/
+inst/extdata/iucn*
+
+# Vignette HTML is generated into inst/doc by R CMD build; a copy left
+# behind in vignettes/ is a build artefact, not source.
+vignettes/*.html

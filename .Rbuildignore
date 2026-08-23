@@ -1,0 +1,10 @@
+^richcast\.Rproj$
+^\.Rproj\.user$
+^data-raw$
+^vignettes/precompute\.R$
+^vignettes/.*\.Rmd\.orig$
+^LICENSE\.md$
+^README\.Rmd$
+^\.github$
+^_pkgdown\.yml$
+^docs$

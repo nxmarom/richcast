@@ -1,0 +1,472 @@
+---
+title: "Rodent richness in the Tian Shan, 850-1850 CE"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Rodent richness in the Tian Shan, 850-1850 CE}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE, comment = "#>",
+  fig.width = 7, fig.height = 4.5, dpi = 120
+)
+```
+
+A complete analysis: eleven centuries of rodent distributions across the
+Tian Shan, from a global IUCN range download and CHELSA-TraCE21k
+palaeoclimate.
+
+The question behind it is epidemiological. The Tian Shan is a plague focus,
+and the second pandemic is conventionally dated to the mid-fourteenth century.
+If climate reorganised the local rodent assemblage in the run-up to 1350 --
+particularly the marmots and gerbils that act as reservoirs -- that
+reorganisation is a candidate part of the story. This vignette produces the
+distributional evidence; it does not attempt the epidemiology.
+
+**This vignette is precomputed.** It runs against a global Red List download
+and roughly 170 MB of prepared climate slices, neither of which can be
+redistributed or fetched at build time. The code below is exactly what was
+run; see `vignettes/precompute.R`.
+
+```{r setup}
+library(richcast)
+library(dplyr)
+library(ggplot2)
+```
+
+## Study design
+
+```{r config}
+VARS <- c("bio01", "bio04", "bio05", "bio06",
+          "bio12", "bio15", "bio16", "bio17")
+TIMES <- seq(850, 1850, by = 100)
+
+tianshan <- focus_box(c(68, 87, 39, 46), label = "Tian Shan")
+karadja  <- focus_box(c(74.38, 74.99, 42.58, 43.03), label = "Karadja")
+```
+
+Eight bioclimatic variables: annual mean temperature and its seasonality, the
+warmest and coldest month extremes, annual precipitation and its seasonality,
+and the wettest and driest quarters. Eleven centennial slices. The wider focus
+is the Tian Shan; `karadja` is a 50 km box around the Chüy Valley cemeteries,
+carried through as a subregion so site-scale richness is reported alongside
+the regional figure.
+
+## Climate
+
+Slices were prepared once, up front. WorldClim 2.1 at 5 arc-minutes provides
+the present-day fitting climate (aggregated by 2); CHELSA-TraCE21k at 0.5
+arc-minutes provides the past (aggregated by 20). Both land on 10 arc-minutes,
+which is the point -- a model fitted on one grid and projected onto another
+produces a plausible-looking surface that means nothing.
+
+```{r prepare, eval = FALSE}
+clim <- prepare_climate(
+  path   = "Inputs/Climate/eurasia_slices",
+  vars   = VARS,
+  times  = TIMES,
+  extent = c(-15, 180, 10, 82)      # Eurasia
+)
+```
+
+```{r climate}
+clim <- climate_dir("../../Inputs/Climate/eurasia_slices")
+clim
+
+check_climate_grids(clim, VARS)
+```
+
+## Taxa
+
+Ranges come from a global Rodentia download from the IUCN Red List spatial
+portal. These are **not** redistributed with `richcast` -- the Red List Terms
+of Use prohibit it -- so this step needs your own download.
+
+Traits come from `rodent_traits`, bundled from Ecke et al. (2022), which
+scores rodent species for synanthropy and zoonotic reservoir status.
+
+```{r db}
+db <- build_taxon_db(
+  ranges = iucn_shapefile("../../Inputs/geo_data/iucn_rodentia/data_0.shp"),
+  traits = rodent_traits
+)
+```
+
+Note the dissolve. A global Rodentia download stores 3090 features for 2345
+species, splitting widespread taxa by subspecies and disjunct patch. Modelling
+features rather than species would train each model against a fragment of its
+own range while feeding the remainder to the background sample.
+
+`S_index` is the synanthropy score. Every species present in the Ecke table
+scores above zero, so filtering on it is really a presence-in-table filter --
+worth being explicit about, since it looks like a threshold:
+
+```{r filter}
+db <- filter_taxa(db, !is.na(S_index))
+```
+
+## Running the series
+
+One call. Each species is fitted once against present-day climate and then
+projected onto all eleven slices; species whose ranges fall outside the
+buffered focus never get fitted at all.
+
+```{r run}
+res <- run_hindcast_series(
+  db, clim,
+  times      = TIMES,
+  focus      = tianshan,
+  subregions = list(karadja = karadja),
+  predictors = VARS,
+  resolution = 0.1,
+  on_error   = "warn",
+  quiet      = TRUE
+)
+res
+```
+
+### Model diagnostics
+
+```{r models}
+res$models |>
+  arrange(desc(auc)) |>
+  print(n = Inf)
+```
+
+AUC here is computed on the training data, so it measures fit rather than
+transferability, and should be read as a screen for models that failed rather
+than as evidence a model is good. Thresholds are TSS-optimised per species.
+
+Two columns deserve a look before trusting any of the rest. `n_presence` is
+the number of presence samples actually drawn: `fit_sdm()` asks for 100, but a
+species whose range covers fewer than 100 cells at this resolution cannot
+supply them, and those models rest on a thinner base than the AUC suggests.
+`present_cells` is the modelled present-day range in cells — where it is zero,
+the species contributes nothing to richness at any slice and its deltas are
+all zero by construction.
+
+```{r thin-models}
+res$models |>
+  filter(n_presence < 100 | present_cells == 0) |>
+  arrange(present_cells, n_presence)
+```
+
+The four species with no present-day range are worth dwelling on, because
+they carry some of the *highest* AUCs in the table. That combination is
+diagnostic rather than contradictory: a model can separate its training
+presences from its background almost perfectly and still place its
+TSS-optimised threshold above anything the study region actually offers. For
+these taxa the Tian Shan sits at the edge of a range centred elsewhere, so the
+honest reading is "no suitable habitat here", not "good model". They are left
+in so the count is visible; filter them out before interpreting richness if
+you would rather they not dilute the mean.
+
+## Richness over time
+
+```{r richness-table}
+res$richness |>
+  select(period, time, mean_richness, max_richness, karadja_max) |>
+  print(n = Inf)
+```
+
+```{r richness-plot}
+res$richness |>
+  filter(period != "present") |>
+  ggplot(aes(time, mean_richness)) +
+  geom_vline(xintercept = 1350, colour = "firebrick", linetype = "dashed") +
+  geom_line(colour = "#3a5a8c") +
+  geom_point(colour = "#3a5a8c") +
+  labs(
+    x = "Year CE", y = "Mean species richness",
+    title = "Rodent richness in the Tian Shan",
+    subtitle = "Dashed line: conventional date of the second plague pandemic"
+  ) +
+  theme_minimal()
+```
+
+### Where the richness is
+
+A regional mean says how many species, not where. `run_hindcast_series()`
+keeps the richness surface for every slice, and `richness_grid()` returns them
+in long form for mapping.
+
+Reference geography makes those maps readable: in this region Issyk-Kul,
+Balkhash and the Ili and Syr Darya do more to orient a reader than the
+graticule does. Countries and coastlines ship with \pkg{rnaturalearth}; lakes
+and rivers are downloaded once and cached, and are simply omitted if the
+download is unavailable.
+
+```{r geo-layers}
+cache <- tools::R_user_dir("richcast", "cache")
+dir.create(cache, recursive = TRUE, showWarnings = FALSE)
+
+ne_physical <- function(type) {
+  tryCatch(
+    rnaturalearth::ne_download(scale = 10, type = type, category = "physical",
+                               returnclass = "sf", destdir = cache),
+    error = function(e) NULL
+  )
+}
+
+bb <- sf::st_bbox(tianshan$geometry)
+
+# Natural Earth polygons are valid in the plane but not on the sphere, so sf's
+# s2 backend refuses to crop them ("Loop 0 is not valid"). This is the same
+# problem richcast handles internally for range polygons. Disable s2 for the
+# clip, then put it back.
+old_s2 <- sf::sf_use_s2()
+suppressMessages(sf::sf_use_s2(FALSE))
+
+clip <- function(x) {
+  if (is.null(x)) return(NULL)
+  tryCatch(suppressWarnings(sf::st_crop(x, bb)), error = function(e) NULL)
+}
+
+borders <- clip(rnaturalearth::ne_countries(scale = "large", returnclass = "sf"))
+lakes   <- clip(ne_physical("lakes"))
+rivers  <- clip(ne_physical("rivers_lake_centerlines"))
+
+suppressMessages(sf::sf_use_s2(old_s2))
+
+vapply(list(borders = borders, lakes = lakes, rivers = rivers),
+       function(x) if (is.null(x)) 0L else nrow(x), integer(1))
+```
+
+```{r map-helper}
+# One specification, reused by every map below.
+geo_layers <- function() {
+  list(
+    if (!is.null(rivers))
+      geom_sf(data = rivers, colour = "#6ba3cc", linewidth = 0.22, inherit.aes = FALSE),
+    if (!is.null(lakes))
+      geom_sf(data = lakes, fill = "#cfe3f2", colour = "#6ba3cc",
+              linewidth = 0.18, inherit.aes = FALSE),
+    if (!is.null(borders))
+      geom_sf(data = borders, fill = NA, colour = "grey30",
+              linewidth = 0.28, inherit.aes = FALSE),
+    coord_sf(xlim = c(bb[["xmin"]], bb[["xmax"]]),
+             ylim = c(bb[["ymin"]], bb[["ymax"]]),
+             expand = FALSE, datum = NA),
+    scale_fill_distiller(palette = "YlGn", direction = 1, name = "Species"),
+    labs(x = NULL, y = NULL),
+    theme_minimal(),
+    theme(panel.grid = element_blank(),
+          panel.background = element_rect(fill = "white", colour = NA),
+          axis.text = element_text(size = 7))
+  )
+}
+```
+
+```{r richness-maps, fig.width = 9, fig.height = 7.5}
+grid <- richness_grid(res)
+
+ggplot() +
+  geom_raster(data = grid, aes(x, y, fill = richness)) +
+  geo_layers() +
+  facet_wrap(~time, ncol = 3) +
+  ggtitle("Rodent richness across the Tian Shan, by century CE") +
+  theme(legend.position = "bottom")
+```
+
+A single slice against the present-day baseline, on a shared scale:
+
+```{r richness-map-pair, fig.width = 8, fig.height = 3.6}
+pair <- richness_grid(res, times = c("present", "1350")) |>
+  mutate(time = factor(time, levels = c("present", "1350"),
+                       labels = c("Present", "1350 CE")))
+
+ggplot() +
+  geom_raster(data = pair, aes(x, y, fill = richness)) +
+  geo_layers() +
+  facet_wrap(~time)
+```
+
+Individual surfaces come back as `SpatRaster`s, for writing out or for further
+`terra` work:
+
+```{r richness-surface}
+richness_surface(res, 1350)
+```
+
+## Species trajectories
+
+`res$species` carries one row per species per slice, with each range expressed
+as a suitable-cell count and differenced two ways.
+
+One species across all eleven slices:
+
+```{r species-head}
+res$species |>
+  filter(species == "Marmota_baibacina") |>
+  select(time, cells, delta_from_previous, delta_from_present)
+```
+
+Both deltas are computed after sorting time numerically. Note the single `NA`
+at 850 CE -- the earliest slice has no predecessor, so exactly one row per
+species should be missing `delta_from_previous`. Sorting years as text puts
+850 and 950 *after* 1850, which moves that `NA` to the wrong row and mis-lags
+every difference: the kind of error that survives review because the resulting
+table still looks perfectly orderly.
+
+```{r delta-check}
+# One missing lag per species, and it is always the earliest slice.
+res$species |>
+  summarise(
+    species          = dplyr::n_distinct(species),
+    missing_lags     = sum(is.na(delta_from_previous)),
+    all_at_earliest  = all(time[is.na(delta_from_previous)] == min(time))
+  )
+```
+
+To compare species with very different range sizes, standardise each
+trajectory:
+
+```{r traj-data}
+traj <- res$species |>
+  group_by(species) |>
+  filter(stats::sd(delta_from_present, na.rm = TRUE) > 0) |>
+  mutate(z = as.numeric(scale(delta_from_present))) |>
+  ungroup()
+```
+
+Time runs down the vertical axis, as in a stratigraphic column, so a century
+reads as a level rather than a position along a line. Each panel is one
+species; the grey vertical rule is no change from present, the red horizontal
+rule is 1350 CE. Steps rather than lines, because a centennial slice is an
+interval, not an instant.
+
+```{r trajectories, fig.width = 9, fig.height = 10}
+ggplot(traj, aes(y = time, x = z, group = species)) +
+  geom_vline(xintercept = 0, colour = "gray") +
+  geom_hline(yintercept = 1350, colour = "red", linetype = "dashed") +
+  geom_step(orientation = "y") +
+  scale_y_continuous(breaks = seq(850, 1850, by = 200)) +
+  facet_wrap(~species, ncol = 5) +
+  labs(x = "Standardised change from present", y = "Year CE",
+       title = "Range-size trajectories, standardised per species") +
+  theme_bw()
+```
+
+A single species at readable size, with every slice labelled:
+
+```{r focus-species, fig.width = 5, fig.height = 5}
+traj |>
+  filter(species == "Marmota_baibacina") |>
+  ggplot(aes(y = time, x = z)) +
+  geom_vline(xintercept = 0, colour = "gray") +
+  geom_hline(yintercept = 1350, colour = "red", linetype = "dashed") +
+  geom_step(orientation = "y", linewidth = 1.3) +
+  scale_y_continuous(breaks = seq(850, 1850, by = 100)) +
+  labs(x = "Standardised change from present", y = "Year CE") +
+  ggtitle("Marmota_baibacina") +
+  theme_bw()
+```
+
+## Does the fitting dataset matter?
+
+The run above fits on WorldClim and projects onto CHELSA-TraCE21k. That means
+the model crosses products between fitting and projection, so any systematic
+difference between WorldClim and CHELSA is folded into what looks like climate
+change. CHELSA-TraCE21k publishes its own present-day slice, so the alternative
+is to stay within one product throughout -- `present` is just a directory name:
+
+```{r chelsa-fit}
+clim_chelsa <- climate_dir("../../Baibacina/climate", present = "chelsa_1950")
+
+res_chelsa <- run_hindcast_series(
+  db, clim_chelsa,
+  times = TIMES, focus = tianshan,
+  subregions = list(karadja = karadja),
+  predictors = VARS, resolution = 0.1,
+  on_error = "warn", quiet = TRUE
+)
+```
+
+```{r chelsa-compare}
+comparison <- inner_join(
+  res$richness        |> filter(period != "present") |> select(time, worldclim_fit = mean_richness),
+  res_chelsa$richness |> filter(period != "present") |> select(time, chelsa_fit    = mean_richness),
+  by = "time"
+)
+comparison |> mutate(difference = chelsa_fit - worldclim_fit)
+```
+
+```{r chelsa-plot, fig.width = 7, fig.height = 4}
+bind_rows(
+  transmute(comparison, time, fitted_on = "WorldClim 1985", mean_richness = worldclim_fit),
+  transmute(comparison, time, fitted_on = "CHELSA 1950",    mean_richness = chelsa_fit)
+) |>
+  ggplot(aes(time, mean_richness, colour = fitted_on)) +
+  geom_vline(xintercept = 1350, colour = "firebrick", linetype = "dashed") +
+  geom_line() +
+  geom_point() +
+  labs(x = "Year CE", y = "Mean species richness", colour = "Fitted on") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+The two runs achieve near-identical fit quality, and disagree anyway:
+
+```{r chelsa-summary}
+tibble::tibble(
+  fitted_on     = c("WorldClim 1985", "CHELSA 1950"),
+  median_auc    = c(median(res$models$auc), median(res_chelsa$models$auc)),
+  zero_range_sp = c(sum(res$models$present_cells == 0),
+                    sum(res_chelsa$models$present_cells == 0))
+)
+
+cor(comparison$worldclim_fit, comparison$chelsa_fit)
+```
+
+This is worth taking seriously rather than picking a winner. Median AUC is
+essentially the same either way, so goodness of fit gives no basis for
+preferring one. But the two series correlate only moderately, and they do not
+agree on which century is the minimum. Any claim of the form "richness bottomed
+out at *x*" is therefore a claim about the fitting dataset as much as about the
+past, and should be reported as conditional on it.
+
+Staying within CHELSA has the cleaner logic -- no product change between
+fitting and projection -- but its present-day slice is itself modelled, so it
+carries the reconstruction's biases rather than an observational network's.
+Neither is free. Running both is cheap once the slices are on disk, and the
+spread between them is a more honest error bar than either run's internal
+statistics.
+
+## Chronological uncertainty
+
+Assigning an assemblage to a single century is usually more precision than the
+dating supports. `gaussian_window()` averages a window of slices around each
+target, weighted toward the centre, so a projection reflects a period rather
+than a year:
+
+```{r window, eval = FALSE}
+res_smoothed <- run_hindcast_series(
+  db, clim,
+  times      = TIMES,
+  focus      = tianshan,
+  subregions = list(karadja = karadja),
+  predictors = VARS,
+  window     = gaussian_window(step = 100, weights = c(0.1, 0.3, 1, 0.3, 0.1)),
+  quiet      = TRUE
+)
+```
+
+The cost is a fivefold increase in raster reads, which is why it is opt-in.
+
+## Reproducing this
+
+```{r session}
+sessionInfo()
+```
+
+## Data sources
+
+* **Ranges** -- IUCN Red List of Threatened Species, spatial data download,
+  Rodentia. <https://www.iucnredlist.org>. Not redistributed; cite the version
+  you download.
+* **Traits** -- Ecke et al. (2022) *Nature Communications* **13**:7532,
+  Supplementary Data 1. CC BY 4.0.
+* **Present climate** -- WorldClim 2.1, 5 arc-minutes.
+* **Palaeoclimate** -- CHELSA-TraCE21k v1.0, 0.5 arc-minutes, via `pastclim`.

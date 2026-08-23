@@ -1,0 +1,43 @@
+Package: richcast
+Title: Hindcast Species Distributions and Assemblage Richness Through Time
+Version: 0.0.0.9000
+Authors@R:
+    person("Nimrod", "Marom", , "nxmarom@gmail.com", role = c("aut", "cre"))
+Description: A taxon-agnostic pipeline for projecting species distribution
+    models onto palaeoclimate reconstructions and summarising the resulting
+    assemblage richness over a series of time slices. Range data are supplied
+    by the user from any of several backends (IUCN Red List shapefiles, GBIF
+    occurrences, or arbitrary 'sf' polygons); climate data are retrieved via
+    'pastclim'. A trait table for rodents from Ecke et al. (2022)
+    <doi:10.1038/s41467-022-35273-7> is bundled as a worked example.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends:
+    R (>= 4.1)
+Imports:
+    cli,
+    dplyr,
+    rlang,
+    sf,
+    terra,
+    tibble
+Suggests:
+    ggplot2,
+    maxnet,
+    modEvA,
+    pastclim,
+    rgbif,
+    rnaturalearth,
+    rnaturalearthhires,
+    testthat (>= 3.0.0),
+    withr,
+    knitr,
+    rmarkdown
+Additional_repositories: https://ropensci.r-universe.dev
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+URL: https://github.com/nxmarom/richcast
+BugReports: https://github.com/nxmarom/richcast/issues
+LazyData: true
+Config/roxygen2/version: 8.0.0

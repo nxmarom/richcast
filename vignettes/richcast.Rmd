@@ -1,0 +1,248 @@
+---
+title: "Getting started with richcast"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with richcast}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+`richcast` answers one question: **how did the number of species in a place
+change over time, as climate changed?**
+
+It gets there by fitting a distribution model per species against present-day
+climate, projecting each model onto a series of palaeoclimate reconstructions,
+and stacking the resulting ranges into a richness surface for each slice.
+
+This vignette walks through the API on synthetic data, so every chunk here
+actually runs. For a real analysis end to end -- 32 rodent species across the
+Tian Shan, 850--1850 CE -- see `vignette("tianshan")`.
+
+```{r setup}
+library(richcast)
+```
+
+## The four objects
+
+Nearly everything in `richcast` is one of four things.
+
+| Object | Built by | Holds |
+|---|---|---|
+| range source | `iucn_shapefile()`, `gbif_occurrences()`, `sf_polygons()` | where occurrence geometry comes from |
+| taxon database | `build_taxon_db()` | species, ranges, traits |
+| climate source | `climate_dir()`, `pastclim_climate()` | how to fetch a slice |
+| focus | `focus_box()`, `focus_global()`, `focus_polygon()` | the region to summarise |
+
+## A taxon database
+
+Ranges come from you. `richcast` bundles no range data: IUCN Red List polygons
+cannot legally be redistributed, and everyone's taxon is different anyway.
+Here is a two-species toy set, one species deliberately split across two
+disjunct patches the way real range databases store things.
+
+```{r}
+square <- function(xmin, ymin, size) {
+  sf::st_polygon(list(cbind(
+    c(xmin, xmin + size, xmin + size, xmin, xmin),
+    c(ymin, ymin, ymin + size, ymin + size, ymin)
+  )))
+}
+
+ranges <- sf::st_sf(
+  species = c("Genus_alpha", "Genus_alpha", "Genus_beta"),
+  geometry = sf::st_sfc(
+    square(0.5, 0.5, 3), square(6, 0.5, 2), square(5, 5, 4),
+    crs = 4326
+  )
+)
+
+db <- build_taxon_db(sf_polygons(ranges))
+db
+```
+
+Note the message: three features became two species. This matters more than it
+looks. Treating each feature as a species means a model trains on one fragment
+while the *rest of that species' range* is handed to the background sample --
+so the model is asked to tell the species apart from itself. Pass
+`dissolve = FALSE` if you genuinely want per-feature modelling.
+
+### Joining traits
+
+`build_taxon_db()` takes an optional trait table, joined on a normalised
+species name so that `"Genus alpha"`, `"Genus_alpha"` and `"genus alpha"` all
+land on the same row.
+
+```{r}
+traits <- data.frame(
+  species = c("Genus alpha", "Genus beta"),
+  mass    = c(20, 400)
+)
+
+db <- build_taxon_db(sf_polygons(ranges), traits = traits)
+filter_taxa(db, mass < 100)
+```
+
+Both functions report what they did. Trait joins and filters are where species
+quietly disappear, so the counts are printed rather than left for you to
+discover later.
+
+## A climate source
+
+For real work, prepare slices once with `prepare_climate()`, which streams
+through `pastclim`, aggregates, and writes one GeoTIFF per variable per slice:
+
+```{r eval = FALSE}
+clim <- prepare_climate(
+  path   = "climate/eurasia",
+  vars   = c("bio01", "bio12"),
+  times  = seq(850, 1850, by = 100),
+  extent = c(-15, 180, 10, 82)
+)
+```
+
+It skips files that already exist, so an interrupted download resumes. Point
+`climate_dir()` at the result afterwards.
+
+For this vignette we fabricate a climate gradient instead.
+
+```{r}
+clim_dir <- file.path(tempdir(), "toy_climate")
+
+make_slice <- function(label, shift) {
+  d <- file.path(clim_dir, label)
+  dir.create(d, recursive = TRUE, showWarnings = FALSE)
+  r <- terra::rast(nrows = 40, ncols = 40, xmin = 0, xmax = 10,
+                   ymin = 0, ymax = 10, crs = "EPSG:4326")
+  xy <- terra::xyFromCell(r, seq_len(terra::ncell(r)))
+  terra::values(r) <- xy[, 1] * 2 + xy[, 2] + shift
+  terra::writeRaster(r, file.path(d, "bio01.tif"), overwrite = TRUE)
+  terra::values(r) <- (10 - xy[, 1]) * 2 + xy[, 2] - shift
+  terra::writeRaster(r, file.path(d, "bio12.tif"), overwrite = TRUE)
+}
+
+make_slice("present_1985", 0)
+for (i in seq_along(times <- c(850, 950, 1050, 1150))) {
+  make_slice(sprintf("time_%04d", times[i]), i * 0.8)
+}
+
+clim <- climate_dir(clim_dir)
+clim
+```
+
+Every slice must share a grid. A mismatch between the grid a model was fitted
+on and the grid it is projected onto yields a suitability surface that looks
+entirely plausible and means nothing, so check rather than assume:
+
+```{r}
+check_climate_grids(clim, vars = c("bio01", "bio12"))
+```
+
+## Fitting once, projecting many times
+
+A model depends only on present-day climate and the species' range, so it is
+fitted **once** and reused for every slice.
+
+```{r}
+land <- sf::st_sfc(square(-1, -1, 12), crs = 4326)
+
+m <- fit_sdm(db, "Genus_alpha", clim,
+             predictors = c("bio01", "bio12"),
+             land = land, quiet = TRUE)
+m
+```
+
+`land` masks predictions to land and keeps background sampling off the ocean.
+It defaults to Natural Earth; here the toy world is entirely land.
+
+Projection is a separate call, so the cost of adding a time slice is one
+prediction, not a refit:
+
+```{r}
+for (tt in times) {
+  p <- project_sdm(m, clim, tt, quiet = TRUE)
+  cat(sprintf("%5d CE: %4d suitable cells\n", tt, p$cells))
+}
+```
+
+Both objects survive `saveRDS()`. That is worth stating because it is not free:
+bare `terra` objects store external pointers that reload as invalid handles,
+so `richcast` keeps vectors as `sf` and rasters wrapped.
+
+```{r}
+f <- tempfile(fileext = ".rds")
+saveRDS(m, f)
+suitability(readRDS(f))
+```
+
+### Chronological uncertainty
+
+Dating an archaeological horizon to a single century is usually optimistic.
+`gaussian_window()` averages several slices around the target, weighted toward
+the centre:
+
+```{r}
+gaussian_window(step = 100, weights = c(1, 2, 1))
+```
+
+Pass it to `project_sdm()` or `run_hindcast_series()`. Slices running off the
+end of a reconstruction are dropped and the remaining weights renormalised, so
+a window at the edge narrows rather than silently biasing low.
+
+## Richness
+
+Stack the projected ranges and summarise them over a focus:
+
+```{r}
+focus <- focus_box(c(0, 10, 0, 10), label = "toy region")
+
+ranges_1050 <- list(
+  Genus_alpha = project_sdm(m, clim, 1050, quiet = TRUE)$range
+)
+
+r <- richness_stack(ranges_1050, focus, resolution = 0.25, quiet = TRUE)
+richness_stats(r, time = 1050, focus = focus)
+```
+
+`subregions` adds columns for smaller areas inside the focus -- a single site
+within a wider study region, say.
+
+## The whole thing at once
+
+`run_hindcast_series()` does all of the above for every species and every
+slice, and returns tidy tables.
+
+```{r}
+res <- run_hindcast_series(
+  db, clim,
+  times      = times,
+  focus      = focus,
+  predictors = c("bio01", "bio12"),
+  land       = land,
+  resolution = 0.25,
+  quiet      = TRUE
+)
+res
+```
+
+```{r}
+res$richness[, c("period", "time", "mean_richness", "max_richness")]
+```
+
+```{r}
+res$species
+```
+
+`delta_from_previous` compares each slice to the one before it,
+`delta_from_present` to the present-day baseline. Both are computed after
+sorting time **numerically** -- sorting years as text puts 850 and 950 after
+1850, which silently mis-lags every difference.
+
+## Where to go next
+
+* `vignette("tianshan")` -- a complete published-scale analysis.
+* `?fit_sdm` -- sampling, buffering and threshold options.
+* `?prepare_climate` -- getting palaeoclimate onto disk.

@@ -1,0 +1,34 @@
+citHeader(
+  "To cite richcast, cite the package below plus every data source you used: ",
+  "the IUCN Red List version, any GBIF download DOI, the pastclim climate ",
+  "reconstruction, and Ecke et al. (2022) if you used rodent_traits."
+)
+
+bibentry(
+  bibtype  = "Manual",
+  title    = "richcast: Hindcast Species Distributions and Assemblage Richness Through Time",
+  author   = person("Nimrod", "Marom"),
+  year     = "2026",
+  note     = "R package version 0.0.0.9000",
+  url      = "https://github.com/nxmarom/richcast"
+)
+
+bibentry(
+  bibtype  = "Article",
+  header   = "The bundled rodent_traits dataset is from:",
+  title    = "Population fluctuations and synanthropy explain transmission risk in rodent-borne zoonoses",
+  author   = c(
+    person("Frauke", "Ecke"),
+    person("Barbara A.", "Han"),
+    person("Birger", "Hornfeldt"),
+    person("Hussein", "Khalil"),
+    person("Magnus", "Magnusson"),
+    person("Navinder J.", "Singh"),
+    person("Richard S.", "Ostfeld")
+  ),
+  journal  = "Nature Communications",
+  year     = "2022",
+  volume   = "13",
+  pages    = "7532",
+  doi      = "10.1038/s41467-022-35273-7"
+)
