@@ -1,7 +1,11 @@
 # richcast
 
 <!-- badges: start -->
+[![R-CMD-check](https://github.com/nxmarom/richcast/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/nxmarom/richcast/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
+
+<!-- While the repository is private the badge renders only for signed-in
+     users with access; it will show publicly if the repo is ever opened up. -->
 
 **Hindcast species distributions and assemblage richness through time.**
 

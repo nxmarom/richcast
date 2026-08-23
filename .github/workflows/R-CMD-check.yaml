@@ -1,0 +1,52 @@
+# Run R CMD check on a clean machine.
+#
+# Locally "Status: OK" means OK against one particular library. This checks
+# against a machine that has nothing installed, which is what catches an
+# undeclared dependency or a fallback path that only ever worked because the
+# package it falls back from happened to be present.
+#
+# Linux only for now: enough to catch dependency problems, and cheap in
+# Actions minutes, which are metered on private repositories.
+
+name: R-CMD-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  R-CMD-check:
+    runs-on: ubuntu-latest
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Vignettes are precomputed, but still need pandoc to become HTML.
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+          # rnaturalearthhires is not on CRAN. Without this the Suggests
+          # install fails and the graceful-fallback path never gets tested.
+          extra-repositories: https://ropensci.r-universe.dev
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          upload-snapshots: true
+          build_args: 'c("--no-manual")'
