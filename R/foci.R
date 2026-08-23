@@ -26,15 +26,7 @@ new_focus <- function(geom, type, label = NULL) {
 #' tianshan
 #' @export
 focus_box <- function(coords, label = NULL) {
-  if (!is.numeric(coords) || length(coords) != 4) {
-    rc_abort("{.arg coords} must be numeric of length 4: c(xmin, xmax, ymin, ymax).")
-  }
-  if (coords[1] >= coords[2] || coords[3] >= coords[4]) {
-    rc_abort(c(
-      "{.arg coords} must be c(xmin, xmax, ymin, ymax) with xmin < xmax and ymin < ymax.",
-      "x" = "Got xmin={coords[1]}, xmax={coords[2]}, ymin={coords[3]}, ymax={coords[4]}."
-    ))
-  }
+  check_extent(coords, arg = "coords")
   bb <- sf::st_bbox(
     c(xmin = coords[1], xmax = coords[2], ymin = coords[3], ymax = coords[4]),
     crs = sf::st_crs(4326)

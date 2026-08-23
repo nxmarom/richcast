@@ -67,11 +67,27 @@ prepare_climate <- function(path,
   rlang::check_installed("pastclim", "to download climate reconstructions.")
   say <- function(...) if (!quiet) cli::cli_alert_info(...)
 
-  if (!is.numeric(extent) || length(extent) != 4) {
-    rc_abort("{.arg extent} must be numeric c(xmin, xmax, ymin, ymax).")
-  }
+  check_extent(extent)
   ext_obj <- terra::ext(extent[1], extent[2], extent[3], extent[4])
-  dir.create(path, recursive = TRUE, showWarnings = FALSE)
+
+  # `path` is where slices are WRITTEN. Pointing it at the source NetCDF is an
+  # easy confusion, and dir.create() fails silently on an existing file, so the
+  # run limps on until writeRaster reports "cannot write file" several steps
+  # later with no clue as to why.
+  if (file.exists(path) && !dir.exists(path)) {
+    rc_abort(c(
+      "{.arg path} must be a directory to write slices into.",
+      "x" = "{.path {path}} is an existing file.",
+      "i" = "Source data is located with {.code pastclim::set_data_path()}; {.arg path} is only for richcast's output.",
+      "i" = "Try something like {.path {file.path(dirname(path), 'beyer_slices')}}."
+    ))
+  }
+  if (!dir.exists(path)) {
+    dir.create(path, recursive = TRUE, showWarnings = FALSE)
+    if (!dir.exists(path)) {
+      rc_abort("Could not create output directory {.path {path}}.")
+    }
+  }
 
   ensure_dataset(dataset_present, quiet)
   ensure_dataset(dataset_past, quiet)

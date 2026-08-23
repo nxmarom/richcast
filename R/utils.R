@@ -31,6 +31,47 @@ rc_abort <- function(message, ..., .envir = rlang::caller_env()) {
   cli::cli_abort(message, ..., .envir = .envir, call = .envir)
 }
 
+#' Validate a c(xmin, xmax, ymin, ymax) extent
+#'
+#' The commonest mistake is supplying bbox order, `c(xmin, ymin, xmax, ymax)`,
+#' which is what `sf::st_bbox()` prints and what most GIS tools show. That
+#' misordering usually lands a longitude in a latitude slot, so the check tests
+#' for it explicitly rather than leaving terra to report an "invalid extent".
+#'
+#' @param x Numeric vector of length 4.
+#' @param arg Argument name to quote in the message.
+#' @return `x`, invisibly.
+#' @noRd
+check_extent <- function(x, arg = "extent") {
+  if (!is.numeric(x) || length(x) != 4) {
+    rc_abort("{.arg {arg}} must be numeric of length 4: c(xmin, xmax, ymin, ymax).")
+  }
+  if (anyNA(x)) rc_abort("{.arg {arg}} must not contain missing values.")
+
+  # If reading the input as bbox order c(xmin, ymin, xmax, ymax) yields a valid
+  # extent, that is almost certainly what was meant -- so suggest the fix
+  # rather than only reporting the failure.
+  swapped <- x[c(1, 3, 2, 4)]
+  looks_like_bbox <- swapped[1] < swapped[2] && swapped[3] < swapped[4] &&
+    swapped[3] >= -90 && swapped[4] <= 90
+
+  if (x[1] >= x[2] || x[3] >= x[4]) {
+    rc_abort(c(
+      "{.arg {arg}} must be c(xmin, xmax, ymin, ymax) with xmin < xmax and ymin < ymax.",
+      "x" = "Got xmin={x[1]}, xmax={x[2]}, ymin={x[3]}, ymax={x[4]}.",
+      if (looks_like_bbox)
+        c("i" = "This looks like bbox order c(xmin, ymin, xmax, ymax). Did you mean c({swapped[1]}, {swapped[2]}, {swapped[3]}, {swapped[4]})?")
+    ))
+  }
+  if (x[3] < -90 || x[4] > 90) {
+    rc_abort(c(
+      "{.arg {arg}} has latitudes outside [-90, 90]: ymin={x[3]}, ymax={x[4]}.",
+      "i" = "The order is c(xmin, xmax, ymin, ymax), not c(xmin, ymin, xmax, ymax)."
+    ))
+  }
+  invisible(x)
+}
+
 #' Convert between years BP and years CE
 #'
 #' richcast works in years CE throughout, because a single signed axis orders

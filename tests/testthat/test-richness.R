@@ -50,3 +50,35 @@ test_that("richness_stack rejects a bare bbox in place of a focus", {
     "focus_box"
   )
 })
+
+test_that("a subregion outside the focus yields NA rather than an error", {
+  # A site drifting outside the study region is a legitimate finding, not a
+  # crash -- but it must be visible as zero cells, not a plausible number.
+  focus <- focus_box(c(0, 4, 0, 4), label = "big")
+  ranges <- list(a = sf::st_sfc(square(0, 0, 2), crs = 4326))
+  r <- richness_stack(ranges, focus, resolution = 0.5, quiet = TRUE)
+
+  expect_warning(
+    s <- richness_stats(r, time = 1350, focus = focus,
+                        subregions = list(elsewhere = focus_box(c(50, 51, 50, 51)))),
+    "does not overlap"
+  )
+  expect_equal(s$elsewhere_cells, 0L)
+  expect_true(is.na(s$elsewhere_max))
+})
+
+test_that("several subregions each get their own columns", {
+  focus <- focus_box(c(0, 4, 0, 4))
+  ranges <- list(a = sf::st_sfc(square(0, 0, 2), crs = 4326))
+  r <- richness_stack(ranges, focus, resolution = 0.5, quiet = TRUE)
+
+  s <- richness_stats(r, time = 1350, focus = focus, subregions = list(
+    west = focus_box(c(0.1, 1.9, 0.1, 1.9)),
+    east = focus_box(c(2.1, 3.9, 0.1, 1.9))
+  ))
+  expect_true(all(c("west_max", "west_mean", "west_cells",
+                    "east_max", "east_mean", "east_cells") %in% names(s)))
+  # The range covers the west box only.
+  expect_equal(s$west_max, 1)
+  expect_equal(s$east_max, 0)
+})

@@ -14,9 +14,8 @@ numeric so that downstream ordering is chronological.}
 
 \item{focus}{The focus used to build \code{richness}, for labelling.}
 
-\item{subregions}{Optional named list of \code{\link[=focus_box]{focus_box()}} objects. Each gets a
-peak- and mean-richness column, for zooming in on a site within the wider
-study region.}
+\item{subregions}{Optional named list of \code{\link[=focus_box]{focus_box()}} objects. Each adds
+\verb{<name>_max}, \verb{<name>_mean} and \verb{<name>_cells} columns. See details.}
 }
 \value{
 A one-row tibble.
@@ -24,6 +23,34 @@ A one-row tibble.
 \description{
 Summarise a richness surface
 }
+\section{Subregions}{
+\code{subregions} reports a small area without shrinking the analysis to it.
+Richness is computed once, over \code{focus}; each subregion is then a second
+readout of that same surface -- cropped, masked, summarised -- so it costs
+a crop rather than another model run.
+
+This matters when the area of interest is small relative to the climate
+grid. A 0.7-degree site box against a 0.5-degree reconstruction contains
+about four cells, and a mean over four cells is not a regional signal. Make
+the focus regional and demote the site to a subregion, and one run gives
+both:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{run_hindcast_series(
+  db, clim, times = times,
+  focus      = focus_box(c(33, 40, 29, 37.5), label = "Levant"),
+  subregions = list(galilee = focus_box(c(35.05, 35.75, 32.55, 33.30)))
+)
+}\if{html}{\out{</div>}}
+
+Each named entry adds three columns. \verb{<name>_cells} is worth reading
+alongside the other two: a maximum over a handful of cells jumps around
+between slices in a way the mean does not.
+
+A subregion must lie inside \code{focus}; one that does not yields \code{NA} with
+\code{cells = 0} rather than an error, since a site drifting outside the study
+region is a legitimate thing to discover.
+}
+
 \seealso{
 \code{\link[=richness_stack]{richness_stack()}}
 }

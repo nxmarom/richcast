@@ -30,3 +30,21 @@ test_that("focus helpers convert to terra without losing the extent", {
   expect_equal(unname(as.numeric(as.vector(e))), c(-10, 10, -5, 5))
   expect_s4_class(richcast:::focus_vect(f), "SpatVector")
 })
+
+test_that("bbox-ordered coords are diagnosed, not just rejected", {
+  # c(xmin, ymin, xmax, ymax) is what st_bbox prints and what most GIS tools
+  # show, so it is the mistake people actually make.
+  expect_error(focus_box(c(-25, 1.3, 180, 81.9)), "bbox order")
+  expect_error(focus_box(c(-25, 1.3, 180, 81.9)), "c\\(-25, 180, 1.3, 81.9\\)")
+})
+
+test_that("out-of-range latitudes are called out explicitly", {
+  expect_error(focus_box(c(0, 10, -100, 50)), "outside")
+  expect_error(focus_box(c(0, 10, 0, 120)), "outside")
+})
+
+test_that("check_extent accepts a well-formed extent", {
+  expect_silent(richcast:::check_extent(c(-25, 180, 1.3, 81.9)))
+  expect_error(richcast:::check_extent(c(1, 2, 3)), "length 4")
+  expect_error(richcast:::check_extent(c(1, NA, 3, 4)), "missing values")
+})

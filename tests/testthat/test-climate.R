@@ -95,3 +95,20 @@ test_that("check_climate_grids catches a mismatched slice", {
 
   expect_error(check_climate_grids(clim, quiet = TRUE), "not consistent")
 })
+
+test_that("prepare_climate rejects a file where a directory is required", {
+  # Pointing `path` at the source NetCDF is an easy confusion, and left
+  # unchecked it surfaces much later as "[writeRaster] cannot write file".
+  f <- withr::local_tempfile(fileext = ".nc")
+  file.create(f)
+  expect_error(
+    prepare_climate(path = f, vars = "bio01", times = 850,
+                    extent = c(0, 10, 0, 10)),
+    "existing file"
+  )
+  expect_error(
+    prepare_climate(path = f, vars = "bio01", times = 850,
+                    extent = c(0, 10, 0, 10)),
+    "set_data_path"
+  )
+})
