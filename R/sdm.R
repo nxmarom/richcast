@@ -105,17 +105,40 @@ fit_sdm <- function(db,
   study_vec <- terra::vect(study_ext, crs = "EPSG:4326")
 
   # --- Presence and background samples -----------------------------------
-  bg_vec <- terra::intersect(terra::erase(study_vec, sp_vec), land_vec)
+  # Erasing the range from the study extent only makes sense for a polygon.
+  # Points have no area to erase, and terra::erase() returns zero features
+  # rather than the untouched extent, so routing occurrences through the same
+  # call aborted every fit on "no background area left" -- a diagnosis exactly
+  # backwards from the truth, since a point range fills nothing.
+  #
+  # With occurrences the background is the study extent itself. That is the
+  # usual presence-background convention: the background describes what was
+  # available, and a cell containing an occurrence was available too.
+  bg_vec <- if (is_point) {
+    terra::intersect(study_vec, land_vec)
+  } else {
+    erased <- terra::erase(study_vec, sp_vec)
+    if (is.null(erased) || nrow(erased) == 0) {
+      rc_abort(c(
+        "[{sp_name}] No background area left after erasing the range.",
+        "i" = "The range fills the study extent; widen {.arg buffer}."
+      ))
+    }
+    terra::intersect(erased, land_vec)
+  }
   if (is.null(bg_vec) || nrow(bg_vec) == 0) {
     rc_abort(c(
-      "[{sp_name}] No background area left after erasing the range.",
-      "i" = "The range fills the study extent; widen {.arg buffer}."
+      "[{sp_name}] No background area left inside the study extent.",
+      "i" = "The extent may fall entirely off the {.arg land} outline."
     ))
   }
 
   set.seed(seed)
   if (is_point) {
-    say("[{sp_name}] Using {nrow(row)} occurrence point{?s} directly")
+    # nrow(row) is 1 for a combined MULTIPOINT however many occurrences it
+    # holds, so it cannot report the count; the geometry has to be counted.
+    n_occ <- nrow(terra::geom(sp_vec))
+    say("[{sp_name}] Using {n_occ} occurrence point{?s} directly")
     pres_df <- stats::na.omit(terra::extract(present, sp_vec, ID = FALSE))
   } else {
     pres_df <- sample_cells(present, sp_vec, nsample)
@@ -298,6 +321,21 @@ db_row <- function(db, species) {
     ))
   }
   if (length(hit) > 1) {
+    rows <- db[hit, ]
+    types <- as.character(sf::st_geometry_type(rows))
+
+    # A point source keeps one row per occurrence on purpose:
+    # build_taxon_db() skips the dissolve for points, so several rows for one
+    # species is the normal shape of occurrence data, not a defect to warn
+    # about. Taking the first would have fitted the model to a single
+    # occurrence, and the advice to rebuild with dissolve = TRUE could not have
+    # helped, since that path never runs for points.
+    if (all(types %in% c("POINT", "MULTIPOINT"))) {
+      out <- rows[1, ]
+      sf::st_geometry(out) <- sf::st_combine(sf::st_geometry(rows))
+      return(out)
+    }
+
     cli::cli_warn(c(
       "{.val {key}} has {length(hit)} rows; using the first.",
       "i" = "Rebuild with {.code build_taxon_db(dissolve = TRUE)} to union them."

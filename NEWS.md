@@ -219,6 +219,34 @@ on false grounds.
   the time slices. Directories assembled by hand carry no manifest and are
   reported as unverifiable rather than passing silently.
 
+## Occurrence ranges could never be fitted
+
+`gbif_occurrences()` is exported and documented, and `fit_sdm()` has a branch
+for point geometry, but nothing in the test suite ever fitted one. Three
+defects had accumulated there, and any one of them was fatal:
+
+* **The background came back empty.** `terra::erase(study, range)` is how the
+  background is carved out, and erasing zero-area point geometry returns zero
+  features rather than the untouched extent. Every occurrence fit aborted on
+  "No background area left after erasing the range" -- a diagnosis exactly
+  backwards, since a point range fills nothing. Points now take the study
+  extent as their background, which is the usual presence-background
+  convention: the background describes availability, and a cell holding an
+  occurrence was available too.
+* **The model would have been fitted to a single occurrence.**
+  `build_taxon_db()` deliberately skips the dissolve for point sources, so one
+  row per record is the intended shape; `db_row()` then collapsed multi-row
+  species to `hit[1]`. The two halves contradicted each other, and the
+  warning's advice -- rebuild with `dissolve = TRUE` -- pointed at a branch
+  that never runs for points. Occurrences are now combined across rows.
+* **The progress message counted features, not points.** `nrow(row)` is 1 for
+  a combined geometry however many records it holds, so it reported "Using 1
+  occurrence point" for any dataset.
+
+The polygon path is unchanged: ranges are still erased from their background,
+and a range filling its own study extent still aborts as before.
+`tests/testthat/test-point-ranges.R` covers both.
+
 ## To do
 
 * Implement the resolvability screen described above, once the cutoff is
