@@ -14,6 +14,31 @@
 #' repeats identical work once per slice, since the model depends only on
 #' present-day climate.
 #'
+#' @section Choosing a baseline:
+#'
+#' `delta_from_present` subtracts a baseline range size from each slice, so it
+#' only means anything if the baseline and the slices are commensurable. They
+#' are not when the present-day slice comes from a different climate product
+#' than the palaeoclimate series -- fitting on WorldClim and projecting onto
+#' CHELSA, say. The product step then enters every delta, and it does not
+#' cancel: for one species it inflated the present-day range by 42%, flipping
+#' that species from "above present in 2 of 11 centuries" to "above present in
+#' all 11". The offset is species-specific in both size and sign, so it
+#' distorts comparisons between taxa as well as within them.
+#'
+#' Two ways to keep the comparison honest:
+#'
+#' * Use a climate source that is one product throughout, including its
+#'   present-day slice -- `climate_dir(path, present = "chelsa_1950")` rather
+#'   than a WorldClim present beside CHELSA slices. Then the default
+#'   `baseline = "present"` is already consistent.
+#' * Where the reconstruction publishes no present-day slice, set `baseline`
+#'   to its youngest time slice and describe results as change relative to
+#'   that, not to the present.
+#'
+#' richcast cannot detect which product a directory of GeoTIFFs came from, so
+#' it cannot warn you automatically. The choice is yours to make explicitly.
+#'
 #' @param db A `richcast_db` from [build_taxon_db()].
 #' @param climate A climate source from [climate_dir()] or [pastclim_climate()].
 #' @param times Numeric vector of years CE.
@@ -26,6 +51,11 @@
 #'   species are relevant. Should be at least the maximum fitting buffer.
 #' @param window Optional [gaussian_window()] for time-averaging.
 #' @param resolution Richness grid resolution in degrees.
+#' @param baseline Slice that `delta_from_present` is measured against, and
+#'   that the `present` richness row is built from. `"present"` (default) uses
+#'   the slice the models were fitted on; a numeric year uses that slice
+#'   instead. Either way the baseline is projected through the same path as
+#'   the hindcast slices. See details.
 #' @param keep_surfaces Retain the richness raster for every slice, so maps can
 #'   be drawn afterwards. Stored wrapped, so the result still survives
 #'   `saveRDS()`. Set `FALSE` for very large foci where only the summary
@@ -48,6 +78,7 @@ run_hindcast_series <- function(db,
                                 prefilter_buffer = 8,
                                 window = NULL,
                                 resolution = 0.1,
+                                baseline = "present",
                                 keep_surfaces = TRUE,
                                 on_error = c("warn", "stop"),
                                 quiet = FALSE,
@@ -64,7 +95,8 @@ run_hindcast_series <- function(db,
   targets <- select_species(db, focus, species, prefilter_buffer, quiet)
 
   models <- list()
-  ranges <- list()   # ranges[[time]][[species]]
+  ranges <- list()      # ranges[[time]][[species]]
+  baselines <- list()   # baseline range per species
   counts <- list()
   for (tt in as.character(times)) ranges[[tt]] <- list()
 
@@ -86,6 +118,24 @@ run_hindcast_series <- function(db,
     if (is.null(fitted)) next
     models[[sp]] <- fitted
 
+    # The baseline every delta is measured against. Projected through the same
+    # path as the past slices, so the two are commensurable. When it is the
+    # fitting slice this reproduces fitted$present_cells exactly, so the
+    # default costs nothing.
+    if (identical(baseline, "present")) {
+      base_cells <- fitted$present_cells
+      base_range <- fitted$present_range
+    } else {
+      base <- try_step(
+        project_sdm(fitted, climate, baseline, window = window, quiet = quiet),
+        what = paste("project baseline", baseline), species = sp,
+        on_error = on_error
+      )
+      base_cells <- if (is.null(base)) NA_integer_ else base$cells
+      base_range <- if (is.null(base)) NULL else base$range
+    }
+    baselines[[sp]] <- base_range
+
     for (tt in times) {
       proj <- try_step(
         project_sdm(fitted, climate, tt, window = window, quiet = quiet),
@@ -95,7 +145,7 @@ run_hindcast_series <- function(db,
       ranges[[as.character(tt)]][[sp]] <- proj$range
       counts[[length(counts) + 1L]] <- tibble::tibble(
         species = sp, time = tt, cells = proj$cells,
-        present_cells = fitted$present_cells
+        present_cells = base_cells
       )
     }
   }
@@ -133,7 +183,7 @@ run_hindcast_series <- function(db,
   richness <- dplyr::bind_rows(richness)
 
   # --- Present-day baseline ----------------------------------------------
-  present_ranges <- lapply(models, function(m) m$present_range)
+  present_ranges <- baselines[names(models)]
   present_r <- richness_stack(present_ranges, focus,
                               resolution = resolution, quiet = TRUE)
   if (keep_surfaces) surfaces[["present"]] <- terra::wrap(present_r)
@@ -174,7 +224,8 @@ run_hindcast_series <- function(db,
       ranges   = ranges,
       surfaces = surfaces,
       times    = times,
-      focus    = focus
+      focus    = focus,
+      baseline = baseline
     ),
     class = "richcast_series"
   )

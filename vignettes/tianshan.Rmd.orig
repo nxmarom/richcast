@@ -56,27 +56,45 @@ the regional figure.
 
 ## Climate
 
-Slices were prepared once, up front. WorldClim 2.1 at 5 arc-minutes provides
-the present-day fitting climate (aggregated by 2); CHELSA-TraCE21k at 0.5
-arc-minutes provides the past (aggregated by 20). Both land on 10 arc-minutes,
-which is the point -- a model fitted on one grid and projected onto another
-produces a plausible-looking surface that means nothing.
+Slices were prepared once, up front: CHELSA-TraCE21k at 0.5 arc-minutes,
+aggregated by 20 to land on 10 arc-minutes, for the eleven centennial slices
+*and* for the present-day slice the models are fitted against. Sharing one
+grid matters -- a model fitted on one grid and projected onto another produces
+a plausible-looking surface that means nothing -- and so does sharing one
+product, for the reason set out below.
 
 ```{r prepare, eval = FALSE}
 clim <- prepare_climate(
-  path   = "Inputs/Climate/eurasia_slices",
-  vars   = VARS,
-  times  = TIMES,
-  extent = c(-15, 180, 10, 82)      # Eurasia
+  path            = "climate/chelsa",
+  vars            = VARS,
+  times           = TIMES,
+  extent          = c(-15, 180, 10, 82),   # Eurasia
+  dataset_present = "CHELSA_trace21k_1.0_0.5m_vsi",
+  dataset_past    = "CHELSA_trace21k_1.0_0.5m_vsi",
+  present_time    = 1950,
+  agg_present     = 20,
+  agg_past        = 20,
+  present_dir     = "chelsa_1950"
 )
 ```
 
 ```{r climate}
-clim <- climate_dir("../../Inputs/Climate/eurasia_slices")
+clim <- climate_dir("../../Baibacina/climate", present = "chelsa_1950")
 clim
 
 check_climate_grids(clim, VARS)
 ```
+
+One product throughout, present-day slice included. That matters more than it
+looks. `delta_from_present` subtracts a baseline range size from each slice,
+so the baseline has to be commensurable with the slices -- and a WorldClim
+present sitting beside CHELSA time slices is not. Fitting on WorldClim and
+measuring change against it inflated *Marmota baibacina*'s present-day range
+by 42% here, which flipped that species from above present in 2 of 11
+centuries to above present in all 11. The offset is species-specific in sign
+as well as size, so it distorts comparisons between taxa too. See
+`?run_hindcast_series` for the `baseline` argument where a single-product
+source is not available.
 
 ## Taxa
 
@@ -109,9 +127,11 @@ db <- filter_taxa(db, !is.na(S_index))
 
 ## Running the series
 
-One call. Each species is fitted once against present-day climate and then
+One call. Each species is fitted once against the present-day slice and then
 projected onto all eleven slices; species whose ranges fall outside the
-buffered focus never get fitted at all.
+buffered focus never get fitted at all. `baseline` is left at its default, so
+deltas are measured against that same CHELSA present -- one product from
+fitting through to comparison.
 
 ```{r run}
 res <- run_hindcast_series(
@@ -371,17 +391,17 @@ traj |>
 
 ## Does the fitting dataset matter?
 
-The run above fits on WorldClim and projects onto CHELSA-TraCE21k. That means
-the model crosses products between fitting and projection, so any systematic
-difference between WorldClim and CHELSA is folded into what looks like climate
-change. CHELSA-TraCE21k publishes its own present-day slice, so the alternative
-is to stay within one product throughout -- `present` is just a directory name:
+The run above stays inside CHELSA-TraCE21k. The obvious alternative is to fit
+on WorldClim, an observational product, and project onto CHELSA -- which is
+what the pipeline this package was extracted from did. That crosses products
+between fitting and projection, so any systematic difference between the two
+is folded into what looks like climate change:
 
 ```{r chelsa-fit}
-clim_chelsa <- climate_dir("../../Baibacina/climate", present = "chelsa_1950")
+clim_worldclim <- climate_dir("../../Inputs/Climate/eurasia_slices")
 
-res_chelsa <- run_hindcast_series(
-  db, clim_chelsa,
+res_worldclim <- run_hindcast_series(
+  db, clim_worldclim,
   times = TIMES, focus = tianshan,
   subregions = list(karadja = karadja),
   predictors = VARS, resolution = 0.1,
@@ -391,8 +411,8 @@ res_chelsa <- run_hindcast_series(
 
 ```{r chelsa-compare}
 comparison <- inner_join(
-  res$richness        |> filter(period != "present") |> select(time, worldclim_fit = mean_richness),
-  res_chelsa$richness |> filter(period != "present") |> select(time, chelsa_fit    = mean_richness),
+  res$richness           |> filter(period != "present") |> select(time, chelsa_fit    = mean_richness),
+  res_worldclim$richness |> filter(period != "present") |> select(time, worldclim_fit = mean_richness),
   by = "time"
 )
 comparison |> mutate(difference = chelsa_fit - worldclim_fit)
@@ -416,10 +436,10 @@ The two runs achieve near-identical fit quality, and disagree anyway:
 
 ```{r chelsa-summary}
 tibble::tibble(
-  fitted_on     = c("WorldClim 1985", "CHELSA 1950"),
-  median_auc    = c(median(res$models$auc), median(res_chelsa$models$auc)),
+  fitted_on     = c("CHELSA 1950", "WorldClim 1985"),
+  median_auc    = c(median(res$models$auc), median(res_worldclim$models$auc)),
   zero_range_sp = c(sum(res$models$present_cells == 0),
-                    sum(res_chelsa$models$present_cells == 0))
+                    sum(res_worldclim$models$present_cells == 0))
 )
 
 cor(comparison$worldclim_fit, comparison$chelsa_fit)
@@ -433,11 +453,15 @@ out at *x*" is therefore a claim about the fitting dataset as much as about the
 past, and should be reported as conditional on it.
 
 Staying within CHELSA has the cleaner logic -- no product change between
-fitting and projection -- but its present-day slice is itself modelled, so it
-carries the reconstruction's biases rather than an observational network's.
-Neither is free. Running both is cheap once the slices are on disk, and the
-spread between them is a more honest error bar than either run's internal
-statistics.
+fitting and projection, so `delta_from_present` compares like with like. Its
+present-day slice is itself modelled, though, so it carries the
+reconstruction's biases rather than an observational network's. That is a real
+cost, but a smaller one than an incommensurable baseline: a modelled present
+is biased, whereas a cross-product present is biased *differently for each
+species*.
+
+Running both is cheap once the slices are on disk, and the spread between them
+is a more honest error bar than either run's internal statistics.
 
 ## Chronological uncertainty
 

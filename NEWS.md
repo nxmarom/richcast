@@ -92,6 +92,33 @@ enabled. Aggregation now happens only in `prepare_climate()`, and
   form for a faceted heatmap. Surfaces are stored wrapped, so the series still
   survives `saveRDS()`.
 
+## Baselines
+
+* `run_hindcast_series()` gains `baseline`, naming the slice `delta_from_present`
+  is measured against and the `present` richness row is built from. It is
+  projected through the same `project_sdm()` path as the hindcast slices, so
+  the two are commensurable. `"present"` (the default) uses the fitting slice
+  and reproduces the previous numbers exactly.
+
+  This exists because the comparison was silently unsound whenever the
+  present-day slice came from a different climate product than the
+  palaeoclimate series -- fitting on WorldClim while projecting onto CHELSA,
+  which is what the source pipeline did. Same model, same threshold, only the
+  present raster swapped: *Marmota baibacina*'s present-day range came out 42%
+  smaller on WorldClim than on CHELSA, flipping it from above-present in 2 of
+  11 centuries to above-present in all 11. The offset is species-specific in
+  sign as well as size -- across six species it ranged from -42% to +177% --
+  so it distorts comparisons between taxa as well as within them.
+
+  richcast cannot tell which product a directory of GeoTIFFs came from, so it
+  cannot warn automatically; `?run_hindcast_series` documents the trap and the
+  two ways out.
+
+* The Tian Shan vignette now runs CHELSA throughout, present slice included,
+  rather than fitting on WorldClim. Its richness minimum moves from 1250 to
+  1350 CE, and the present-day row is comparable with the hindcast rows for
+  the first time. The WorldClim-fitted run is retained as the contrast.
+
 ## Also fixed
 
 * **Signed years.** `climate_dir()` and `prepare_climate()` applied `abs()` to

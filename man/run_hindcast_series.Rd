@@ -14,6 +14,7 @@ run_hindcast_series(
   prefilter_buffer = 8,
   window = NULL,
   resolution = 0.1,
+  baseline = "present",
   keep_surfaces = TRUE,
   on_error = c("warn", "stop"),
   quiet = FALSE,
@@ -41,6 +42,12 @@ species are relevant. Should be at least the maximum fitting buffer.}
 \item{window}{Optional \code{\link[=gaussian_window]{gaussian_window()}} for time-averaging.}
 
 \item{resolution}{Richness grid resolution in degrees.}
+
+\item{baseline}{Slice that \code{delta_from_present} is measured against, and
+that the \code{present} richness row is built from. \code{"present"} (default) uses
+the slice the models were fitted on; a numeric year uses that slice
+instead. Either way the baseline is projected through the same path as
+the hindcast slices. See details.}
 
 \item{keep_surfaces}{Retain the richness raster for every slice, so maps can
 be drawn afterwards. Stored wrapped, so the result still survives
@@ -71,6 +78,34 @@ the time loop -- as the pipeline this package was extracted from did --
 repeats identical work once per slice, since the model depends only on
 present-day climate.
 }
+\section{Choosing a baseline}{
+
+
+\code{delta_from_present} subtracts a baseline range size from each slice, so it
+only means anything if the baseline and the slices are commensurable. They
+are not when the present-day slice comes from a different climate product
+than the palaeoclimate series -- fitting on WorldClim and projecting onto
+CHELSA, say. The product step then enters every delta, and it does not
+cancel: for one species it inflated the present-day range by 42\%, flipping
+that species from "above present in 2 of 11 centuries" to "above present in
+all 11". The offset is species-specific in both size and sign, so it
+distorts comparisons between taxa as well as within them.
+
+Two ways to keep the comparison honest:
+\itemize{
+\item Use a climate source that is one product throughout, including its
+present-day slice -- \code{climate_dir(path, present = "chelsa_1950")} rather
+than a WorldClim present beside CHELSA slices. Then the default
+\code{baseline = "present"} is already consistent.
+\item Where the reconstruction publishes no present-day slice, set \code{baseline}
+to its youngest time slice and describe results as change relative to
+that, not to the present.
+}
+
+richcast cannot detect which product a directory of GeoTIFFs came from, so
+it cannot warn you automatically. The choice is yours to make explicitly.
+}
+
 \seealso{
 \code{\link[=fit_sdm]{fit_sdm()}}, \code{\link[=richness_stats]{richness_stats()}}
 }

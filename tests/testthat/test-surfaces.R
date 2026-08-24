@@ -101,3 +101,67 @@ test_that("species_contributing is reported for every row", {
   expect_true("species_contributing" %in% names(res$richness))
   expect_false(any(is.na(res$richness$species_contributing)))
 })
+
+test_that("baseline = 'present' reproduces the fitted present_cells", {
+  skip_if_not_installed("maxnet")
+  res <- make_series()
+  # The default short-circuits to the fitted value; check it really matches
+  # what projecting onto the fitting slice gives.
+  for (sp in res$models$species) {
+    fit <- res$fits[[sp]]
+    expect_equal(
+      unique(res$species$present_cells[res$species$species == sp]),
+      fit$present_cells
+    )
+  }
+  expect_equal(res$baseline, "present")
+})
+
+test_that("a numeric baseline changes the deltas and is recorded", {
+  skip_if_not_installed("maxnet")
+  dir <- withr::local_tempdir()
+  clim <- structured_climate(dir, times = c(850, 950, 1050))
+  db <- two_species_db()
+  args <- list(db, clim, times = c(850, 950, 1050),
+               focus = focus_box(c(0, 10, 0, 10)),
+               predictors = c("bio01", "bio12"), land = fake_land(),
+               resolution = 0.5, quiet = TRUE)
+
+  d_pres <- suppressWarnings(do.call(run_hindcast_series, args))
+  d_1050 <- suppressWarnings(do.call(run_hindcast_series,
+                                     c(args, list(baseline = 1050))))
+
+  expect_equal(d_pres$baseline, "present")
+  expect_equal(d_1050$baseline, 1050)
+
+  # Measured against the 1050 slice, that slice's own delta must be zero.
+  own <- d_1050$species |> dplyr::filter(.data$time == 1050)
+  expect_true(all(own$delta_from_present == 0))
+
+  # And the baseline column is the 1050 cell count, not the fitted present.
+  for (sp in d_1050$models$species) {
+    cells_1050 <- d_1050$species$cells[d_1050$species$species == sp &
+                                         d_1050$species$time == 1050]
+    expect_equal(
+      unique(d_1050$species$present_cells[d_1050$species$species == sp]),
+      cells_1050
+    )
+  }
+})
+
+test_that("the present richness row is built from the baseline, not the fit", {
+  skip_if_not_installed("maxnet")
+  dir <- withr::local_tempdir()
+  clim <- structured_climate(dir, times = c(850, 950, 1050))
+  db <- two_species_db()
+  res <- suppressWarnings(run_hindcast_series(
+    db, clim, times = c(850, 950, 1050),
+    focus = focus_box(c(0, 10, 0, 10)),
+    predictors = c("bio01", "bio12"), land = fake_land(),
+    resolution = 0.5, baseline = 1050, quiet = TRUE
+  ))
+  # With baseline = 1050, the "present" row must equal the 1050 hindcast row.
+  pres <- res$richness |> dplyr::filter(.data$period == "present")
+  s1050 <- res$richness |> dplyr::filter(.data$time == 1050)
+  expect_equal(pres$mean_richness, s1050$mean_richness)
+})

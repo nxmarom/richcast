@@ -61,32 +61,51 @@ the regional figure.
 
 ## Climate
 
-Slices were prepared once, up front. WorldClim 2.1 at 5 arc-minutes provides
-the present-day fitting climate (aggregated by 2); CHELSA-TraCE21k at 0.5
-arc-minutes provides the past (aggregated by 20). Both land on 10 arc-minutes,
-which is the point -- a model fitted on one grid and projected onto another
-produces a plausible-looking surface that means nothing.
+Slices were prepared once, up front: CHELSA-TraCE21k at 0.5 arc-minutes,
+aggregated by 20 to land on 10 arc-minutes, for the eleven centennial slices
+*and* for the present-day slice the models are fitted against. Sharing one
+grid matters -- a model fitted on one grid and projected onto another produces
+a plausible-looking surface that means nothing -- and so does sharing one
+product, for the reason set out below.
 
 
 ``` r
 clim <- prepare_climate(
-  path   = "Inputs/Climate/eurasia_slices",
-  vars   = VARS,
-  times  = TIMES,
-  extent = c(-15, 180, 10, 82)      # Eurasia
+  path            = "climate/chelsa",
+  vars            = VARS,
+  times           = TIMES,
+  extent          = c(-15, 180, 10, 82),   # Eurasia
+  dataset_present = "CHELSA_trace21k_1.0_0.5m_vsi",
+  dataset_past    = "CHELSA_trace21k_1.0_0.5m_vsi",
+  present_time    = 1950,
+  agg_present     = 20,
+  agg_past        = 20,
+  present_dir     = "chelsa_1950"
 )
 ```
 
 
 ``` r
-clim <- climate_dir("../../Inputs/Climate/eurasia_slices")
+clim <- climate_dir("../../Baibacina/climate", present = "chelsa_1950")
 clim
 #> <richcast_climate> <climate_dir>
-#> 11 slices: 850 to 1850 CE
+#> 41 slices: -2150 to 1850 CE
 
 check_climate_grids(clim, VARS)
-#> ✔ 12 slices share one grid (0.1667 x 0.1667 deg).
+#> ℹ Ignoring 3 non-slice directories: ".staging", "present_1950", and "present_1985".
+#> ✔ 42 slices share one grid (0.1667 x 0.1667 deg).
 ```
+
+One product throughout, present-day slice included. That matters more than it
+looks. `delta_from_present` subtracts a baseline range size from each slice,
+so the baseline has to be commensurable with the slices -- and a WorldClim
+present sitting beside CHELSA time slices is not. Fitting on WorldClim and
+measuring change against it inflated *Marmota baibacina*'s present-day range
+by 42% here, which flipped that species from above present in 2 of 11
+centuries to above present in all 11. The offset is species-specific in sign
+as well as size, so it distorts comparisons between taxa too. See
+`?run_hindcast_series` for the `baseline` argument where a single-product
+source is not available.
 
 ## Taxa
 
@@ -104,7 +123,7 @@ db <- build_taxon_db(
   traits = rodent_traits
 )
 #> ℹ Reading 'data_0.shp'
-#> ✔ Reading 'data_0.shp' [1.1s]
+#> ✔ Reading 'data_0.shp' [1.2s]
 #> 
 #> ℹ Dissolving 3090 features into 2345 species ranges.
 #> ! Spherical union failed on invalid geometry; retrying in planar mode.
@@ -131,9 +150,11 @@ db <- filter_taxa(db, !is.na(S_index))
 
 ## Running the series
 
-One call. Each species is fitted once against present-day climate and then
+One call. Each species is fitted once against the present-day slice and then
 projected onto all eleven slices; species whose ranges fall outside the
-buffered focus never get fitted at all.
+buffered focus never get fitted at all. `baseline` is left at its default, so
+deltas are measured against that same CHELSA present -- one product from
+fitting through to comparison.
 
 
 ``` r
@@ -164,38 +185,38 @@ res$models |>
 #> # A tibble: 32 × 6
 #>    species                   auc threshold n_presence n_background present_cells
 #>    <chr>                   <dbl>     <dbl>      <int>        <int>         <int>
-#>  1 Arvicola_amphibius      0.990     0.94         100          100             0
-#>  2 Micromys_minutus        0.990     0.9          100          100          1528
-#>  3 Lasiopodomys_brandtii   0.983     0.848         93          100           116
-#>  4 Spermophilus_pygmaeus   0.983     0.89         100          100             0
-#>  5 Ellobius_talpinus       0.983     0.88         100          100            17
-#>  6 Allocricetulus_eversma… 0.981     0.88         100          100             0
-#>  7 Sicista_subtilis        0.981     0.84         100          100           120
-#>  8 Microtus_agrestis       0.981     0.86         100          100            62
-#>  9 Bandicota_bengalensis   0.975     0.930         99          100            20
-#> 10 Phodopus_sungorus       0.974     0.88         100          100            51
-#> 11 Rattus_tanezumi         0.973     0.858         71          100           765
-#> 12 Rattus_norvegicus       0.973     0.85         100          100           117
-#> 13 Lagurus_lagurus         0.972     0.879         82          100            63
-#> 14 Meriones_crassus        0.967     0.85         100          100           175
-#> 15 Marmota_bobak           0.965     0.796         70          100           488
-#> 16 Castor_fiber            0.962     0.862         69          100             0
-#> 17 Apodemus_agrarius       0.961     0.77         100          100          2818
-#> 18 Meriones_tamariscinus   0.958     0.776         90          100          4585
-#> 19 Microtus_socialis       0.958     0.816         59          100          1194
-#> 20 Myopus_schisticolor     0.955     0.82         100          100           858
-#> 21 Cricetulus_barabensis   0.954     0.84         100          100            71
-#> 22 Pteromys_volans         0.953     0.77         100          100         11364
-#> 23 Meriones_meridianus     0.953     0.85         100          100             6
-#> 24 Marmota_himalayana      0.951     0.79         100          100           797
-#> 25 Rhombomys_opimus        0.949     0.78         100          100          1728
-#> 26 Apodemus_uralensis      0.949     0.77         100          100          3819
-#> 27 Meriones_unguiculatus   0.949     0.79         100          100          2148
-#> 28 Marmota_sibirica        0.936     0.8          100          100          1446
-#> 29 Mus_musculus            0.935     0.74         100          100         53483
-#> 30 Dryomys_nitedula        0.931     0.730         92          100         14028
-#> 31 Marmota_baibacina       0.914     0.71         100          100          2192
-#> 32 Rattus_rattus           0.909     0.73         100          100         22583
+#>  1 Arvicola_amphibius      0.992     0.94         100          100             0
+#>  2 Ellobius_talpinus       0.989     0.9          100          100             0
+#>  3 Phodopus_sungorus       0.987     0.91         100          100            59
+#>  4 Micromys_minutus        0.986     0.89         100          100          1924
+#>  5 Spermophilus_pygmaeus   0.986     0.88         100          100             0
+#>  6 Allocricetulus_eversma… 0.984     0.88         100          100             0
+#>  7 Sicista_subtilis        0.983     0.84         100          100             0
+#>  8 Bandicota_bengalensis   0.983     0.9          100          100             0
+#>  9 Meriones_crassus        0.981     0.87         100          100             0
+#> 10 Lasiopodomys_brandtii   0.978     0.866         93          100            50
+#> 11 Microtus_agrestis       0.977     0.86         100          100           100
+#> 12 Lagurus_lagurus         0.977     0.908         83          100            66
+#> 13 Rattus_norvegicus       0.973     0.88         100          100           609
+#> 14 Rattus_tanezumi         0.971     0.862         74          100           405
+#> 15 Marmota_bobak           0.970     0.831         70          100           129
+#> 16 Myopus_schisticolor     0.967     0.83         100          100          1111
+#> 17 Castor_fiber            0.962     0.858         69          100             0
+#> 18 Rhombomys_opimus        0.961     0.81         100          100           528
+#> 19 Apodemus_agrarius       0.960     0.77         100          100          4005
+#> 20 Marmota_himalayana      0.958     0.84         100          100            34
+#> 21 Meriones_tamariscinus   0.956     0.794         90          100          3366
+#> 22 Cricetulus_barabensis   0.956     0.85         100          100           238
+#> 23 Pteromys_volans         0.956     0.79         100          100          8052
+#> 24 Meriones_unguiculatus   0.952     0.79         100          100          1347
+#> 25 Dryomys_nitedula        0.951     0.795         93          100          1958
+#> 26 Meriones_meridianus     0.949     0.8          100          100          1733
+#> 27 Microtus_socialis       0.946     0.782         59          100          2546
+#> 28 Apodemus_uralensis      0.944     0.79         100          100          1645
+#> 29 Marmota_sibirica        0.939     0.84         100          100           405
+#> 30 Marmota_baibacina       0.930     0.72         100          100          1708
+#> 31 Mus_musculus            0.916     0.71         100          100         74060
+#> 32 Rattus_rattus           0.913     0.72         100          100         26581
 ```
 
 AUC here is computed on the training data, so it measures fit rather than
@@ -215,21 +236,24 @@ all zero by construction.
 res$models |>
   filter(n_presence < 100 | present_cells == 0) |>
   arrange(present_cells, n_presence)
-#> # A tibble: 12 × 6
+#> # A tibble: 15 × 6
 #>    species                   auc threshold n_presence n_background present_cells
 #>    <chr>                   <dbl>     <dbl>      <int>        <int>         <int>
-#>  1 Castor_fiber            0.962     0.862         69          100             0
-#>  2 Allocricetulus_eversma… 0.981     0.88         100          100             0
-#>  3 Arvicola_amphibius      0.990     0.94         100          100             0
-#>  4 Spermophilus_pygmaeus   0.983     0.89         100          100             0
-#>  5 Bandicota_bengalensis   0.975     0.930         99          100            20
-#>  6 Lagurus_lagurus         0.972     0.879         82          100            63
-#>  7 Lasiopodomys_brandtii   0.983     0.848         93          100           116
-#>  8 Marmota_bobak           0.965     0.796         70          100           488
-#>  9 Rattus_tanezumi         0.973     0.858         71          100           765
-#> 10 Microtus_socialis       0.958     0.816         59          100          1194
-#> 11 Meriones_tamariscinus   0.958     0.776         90          100          4585
-#> 12 Dryomys_nitedula        0.931     0.730         92          100         14028
+#>  1 Castor_fiber            0.962     0.858         69          100             0
+#>  2 Allocricetulus_eversma… 0.984     0.88         100          100             0
+#>  3 Arvicola_amphibius      0.992     0.94         100          100             0
+#>  4 Bandicota_bengalensis   0.983     0.9          100          100             0
+#>  5 Ellobius_talpinus       0.989     0.9          100          100             0
+#>  6 Meriones_crassus        0.981     0.87         100          100             0
+#>  7 Sicista_subtilis        0.983     0.84         100          100             0
+#>  8 Spermophilus_pygmaeus   0.986     0.88         100          100             0
+#>  9 Lasiopodomys_brandtii   0.978     0.866         93          100            50
+#> 10 Lagurus_lagurus         0.977     0.908         83          100            66
+#> 11 Marmota_bobak           0.970     0.831         70          100           129
+#> 12 Rattus_tanezumi         0.971     0.862         74          100           405
+#> 13 Dryomys_nitedula        0.951     0.795         93          100          1958
+#> 14 Microtus_socialis       0.946     0.782         59          100          2546
+#> 15 Meriones_tamariscinus   0.956     0.794         90          100          3366
 ```
 
 The four species with no present-day range are worth dwelling on, because
@@ -252,18 +276,18 @@ res$richness |>
 #> # A tibble: 12 × 5
 #>    period         time mean_richness max_richness karadja_max
 #>    <chr>         <dbl>         <dbl>        <dbl>       <dbl>
-#>  1 present          NA          1.47            5           3
-#>  2 hindcast_850    850          1.48            5           4
-#>  3 hindcast_950    950          1.56            5           4
-#>  4 hindcast_1050  1050          1.57            5           4
-#>  5 hindcast_1150  1150          1.52            5           4
-#>  6 hindcast_1250  1250          1.45            4           4
-#>  7 hindcast_1350  1350          1.48            5           4
-#>  8 hindcast_1450  1450          1.50            5           4
-#>  9 hindcast_1550  1550          1.50            5           4
-#> 10 hindcast_1650  1650          1.57            5           4
-#> 11 hindcast_1750  1750          1.54            5           4
-#> 12 hindcast_1850  1850          1.63            5           4
+#>  1 present          NA          1.64            6           4
+#>  2 hindcast_850    850          1.26            6           4
+#>  3 hindcast_950    950          1.86            6           5
+#>  4 hindcast_1050  1050          1.44            6           4
+#>  5 hindcast_1150  1150          1.47            6           4
+#>  6 hindcast_1250  1250          1.35            6           4
+#>  7 hindcast_1350  1350          1.21            5           4
+#>  8 hindcast_1450  1450          1.43            6           5
+#>  9 hindcast_1550  1550          1.41            6           5
+#> 10 hindcast_1650  1650          1.44            6           5
+#> 11 hindcast_1750  1750          1.36            6           4
+#> 12 hindcast_1850  1850          1.65            7           4
 ```
 
 
@@ -431,17 +455,17 @@ res$species |>
 #> # A tibble: 11 × 4
 #>     time cells delta_from_previous delta_from_present
 #>    <dbl> <int>               <int>              <int>
-#>  1   850  2751                  NA                559
-#>  2   950  2878                 127                686
-#>  3  1050  3034                 156                842
-#>  4  1150  2991                 -43                799
-#>  5  1250  2585                -406                393
-#>  6  1350  2766                 181                574
-#>  7  1450  3342                 576               1150
-#>  8  1550  3852                 510               1660
-#>  9  1650  3997                 145               1805
-#> 10  1750  3399                -598               1207
-#> 11  1850  3639                 240               1447
+#>  1   850  1276                  NA               -432
+#>  2   950  3683                2407               1975
+#>  3  1050  1495               -2188               -213
+#>  4  1150  2277                 782                569
+#>  5  1250  2020                -257                312
+#>  6  1350  1342                -678               -366
+#>  7  1450  2637                1295                929
+#>  8  1550  1711                -926                  3
+#>  9  1650  2619                 908                911
+#> 10  1750  2309                -310                601
+#> 11  1850  2962                 653               1254
 ```
 
 Both deltas are computed after sorting time numerically. Note the single `NA`
@@ -524,18 +548,18 @@ traj |>
 
 ## Does the fitting dataset matter?
 
-The run above fits on WorldClim and projects onto CHELSA-TraCE21k. That means
-the model crosses products between fitting and projection, so any systematic
-difference between WorldClim and CHELSA is folded into what looks like climate
-change. CHELSA-TraCE21k publishes its own present-day slice, so the alternative
-is to stay within one product throughout -- `present` is just a directory name:
+The run above stays inside CHELSA-TraCE21k. The obvious alternative is to fit
+on WorldClim, an observational product, and project onto CHELSA -- which is
+what the pipeline this package was extracted from did. That crosses products
+between fitting and projection, so any systematic difference between the two
+is folded into what looks like climate change:
 
 
 ``` r
-clim_chelsa <- climate_dir("../../Baibacina/climate", present = "chelsa_1950")
+clim_worldclim <- climate_dir("../../Inputs/Climate/eurasia_slices")
 
-res_chelsa <- run_hindcast_series(
-  db, clim_chelsa,
+res_worldclim <- run_hindcast_series(
+  db, clim_worldclim,
   times = TIMES, focus = tianshan,
   subregions = list(karadja = karadja),
   predictors = VARS, resolution = 0.1,
@@ -546,25 +570,25 @@ res_chelsa <- run_hindcast_series(
 
 ``` r
 comparison <- inner_join(
-  res$richness        |> filter(period != "present") |> select(time, worldclim_fit = mean_richness),
-  res_chelsa$richness |> filter(period != "present") |> select(time, chelsa_fit    = mean_richness),
+  res$richness           |> filter(period != "present") |> select(time, chelsa_fit    = mean_richness),
+  res_worldclim$richness |> filter(period != "present") |> select(time, worldclim_fit = mean_richness),
   by = "time"
 )
 comparison |> mutate(difference = chelsa_fit - worldclim_fit)
 #> # A tibble: 11 × 4
-#>     time worldclim_fit chelsa_fit difference
-#>    <dbl>         <dbl>      <dbl>      <dbl>
-#>  1   850          1.48       1.26    -0.219 
-#>  2   950          1.56       1.86     0.301 
-#>  3  1050          1.57       1.44    -0.135 
-#>  4  1150          1.52       1.47    -0.0432
-#>  5  1250          1.45       1.35    -0.103 
-#>  6  1350          1.48       1.21    -0.276 
-#>  7  1450          1.50       1.43    -0.0657
-#>  8  1550          1.50       1.41    -0.0855
-#>  9  1650          1.57       1.44    -0.128 
-#> 10  1750          1.54       1.36    -0.179 
-#> 11  1850          1.63       1.65     0.0234
+#>     time chelsa_fit worldclim_fit difference
+#>    <dbl>      <dbl>         <dbl>      <dbl>
+#>  1   850       1.26          1.48    -0.219 
+#>  2   950       1.86          1.56     0.301 
+#>  3  1050       1.44          1.57    -0.135 
+#>  4  1150       1.47          1.52    -0.0432
+#>  5  1250       1.35          1.45    -0.103 
+#>  6  1350       1.21          1.48    -0.276 
+#>  7  1450       1.43          1.50    -0.0657
+#>  8  1550       1.41          1.50    -0.0855
+#>  9  1650       1.44          1.57    -0.128 
+#> 10  1750       1.36          1.54    -0.179 
+#> 11  1850       1.65          1.63     0.0234
 ```
 
 
@@ -589,16 +613,16 @@ The two runs achieve near-identical fit quality, and disagree anyway:
 
 ``` r
 tibble::tibble(
-  fitted_on     = c("WorldClim 1985", "CHELSA 1950"),
-  median_auc    = c(median(res$models$auc), median(res_chelsa$models$auc)),
+  fitted_on     = c("CHELSA 1950", "WorldClim 1985"),
+  median_auc    = c(median(res$models$auc), median(res_worldclim$models$auc)),
   zero_range_sp = c(sum(res$models$present_cells == 0),
-                    sum(res_chelsa$models$present_cells == 0))
+                    sum(res_worldclim$models$present_cells == 0))
 )
 #> # A tibble: 2 × 3
 #>   fitted_on      median_auc zero_range_sp
 #>   <chr>               <dbl>         <int>
-#> 1 WorldClim 1985      0.961             4
-#> 2 CHELSA 1950         0.965             8
+#> 1 CHELSA 1950         0.965             8
+#> 2 WorldClim 1985      0.961             4
 
 cor(comparison$worldclim_fit, comparison$chelsa_fit)
 #> [1] 0.627347
@@ -612,11 +636,15 @@ out at *x*" is therefore a claim about the fitting dataset as much as about the
 past, and should be reported as conditional on it.
 
 Staying within CHELSA has the cleaner logic -- no product change between
-fitting and projection -- but its present-day slice is itself modelled, so it
-carries the reconstruction's biases rather than an observational network's.
-Neither is free. Running both is cheap once the slices are on disk, and the
-spread between them is a more honest error bar than either run's internal
-statistics.
+fitting and projection, so `delta_from_present` compares like with like. Its
+present-day slice is itself modelled, though, so it carries the
+reconstruction's biases rather than an observational network's. That is a real
+cost, but a smaller one than an incommensurable baseline: a modelled present
+is biased, whereas a cross-product present is biased *differently for each
+species*.
+
+Running both is cheap once the slices are on disk, and the spread between them
+is a more honest error bar than either run's internal statistics.
 
 ## Chronological uncertainty
 
