@@ -115,3 +115,29 @@ test_that("a failing species is skipped rather than killing the run", {
   expect_gt(nrow(res$models), 0)
   expect_true(all(c("auc", "threshold", "present_cells") %in% names(res$models)))
 })
+
+test_that("presence-referenced thresholds are available and ordered sensibly", {
+  skip_if_not_installed("maxnet")
+  dir <- withr::local_tempdir()
+  clim <- structured_climate(dir, times = 850)
+  db <- two_species_db()
+
+  fits <- lapply(c("tss", "p10", "mtp"), function(rule)
+    fit_sdm(db, "Genus_low", clim, predictors = c("bio01", "bio12"),
+            land = fake_land(), threshold = rule, quiet = TRUE))
+  names(fits) <- c("tss", "p10", "mtp")
+
+  expect_true(all(vapply(fits, function(f) f$threshold > 0 && f$threshold < 1,
+                         logical(1))))
+  # mtp admits everything p10 does, so it can never be the stricter cutoff.
+  expect_lte(fits$mtp$threshold, fits$p10$threshold)
+  # A more permissive cutoff cannot yield a smaller range.
+  expect_gte(fits$mtp$present_cells, fits$p10$present_cells)
+
+  expect_equal(fits$p10$threshold_rule, "p10")
+  expect_error(
+    fit_sdm(db, "Genus_low", clim, predictors = c("bio01", "bio12"),
+            land = fake_land(), threshold = "nonsense", quiet = TRUE),
+    "must be"
+  )
+})

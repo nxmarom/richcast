@@ -4,7 +4,7 @@
 \alias{iucn_shapefile}
 \title{Range source: an IUCN Red List range shapefile}
 \usage{
-iucn_shapefile(path, species_col = "SCI_NAME", layer = NULL)
+iucn_shapefile(path, species_col = "SCI_NAME", species = NULL, layer = NULL)
 }
 \arguments{
 \item{path}{Path to the shapefile (\code{.shp}) or geopackage.}
@@ -12,7 +12,15 @@ iucn_shapefile(path, species_col = "SCI_NAME", layer = NULL)
 \item{species_col}{Name of the binomial column. IUCN exports normally call
 this \code{SCI_NAME}.}
 
-\item{layer}{Optional layer name, for multi-layer sources.}
+\item{species}{Optional character vector of binomials. When given, only
+these are read, via an OGR attribute query, and names are matched in both
+\verb{Genus species} and \code{Genus_species} form. Worth using when you want a
+handful of taxa from a continental download: the read itself is no faster
+on an unindexed shapefile, but nothing unwanted is materialised and the
+dissolve shrinks accordingly.}
+
+\item{layer}{Optional layer name, for multi-layer sources. Defaults to the
+file name without its extension.}
 }
 \value{
 A \code{richcast_range_source}.
@@ -28,6 +36,12 @@ the terms, and cite the version you used.
 \examples{
 src <- iucn_shapefile("~/iucn_rodentia/data_0.shp")
 print(src)
+
+# Only the taxa you actually intend to model:
+iucn_shapefile(
+  "~/iucn_artiodactyla/data_0.shp",
+  species = c("Gazella gazella", "Sus scrofa", "Capra ibex")
+)
 }
 \seealso{
 \code{\link[=sf_polygons]{sf_polygons()}}, \code{\link[=gbif_occurrences]{gbif_occurrences()}}, \code{\link[=build_taxon_db]{build_taxon_db()}}

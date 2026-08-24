@@ -144,7 +144,84 @@ enabled. Aggregation now happens only in `prepare_climate()`, and
   A real Red List download trips this in both `st_union()` and
   `st_intersects()`.
 
+## Threshold rule: `p10` replaces `tss` as the default
+
+The binarisation rule turned out to govern almost everything else about this
+pipeline, and the inherited choice was the wrong one.
+
+`tss` maximises the true skill statistic, which is referenced to the
+*background*: widen the background and discrimination gets easier, so the
+optimum cutoff rises and less and less clears it. Measured across eight
+ungulates, widening the background buffer moved the median threshold from 0.78
+to 0.86 and the median modelled range from 18 cells to 2. Three separate
+background definitions were tried and every one made things worse -- the
+background was never the problem, the rule was.
+
+`p10` takes the tenth percentile of predictions at training presences. Being
+referenced to the presences, it cannot be tightened by a wider background.
+`mtp` (minimum training presence) is also available, and a fixed numeric
+cutoff still works.
+
+Measured on the same eight ungulates, five seeds each:
+
+| rule | median threshold | median cells | median CV | zero-range draws | resolvable |
+|---|---|---|---|---|---|
+| tss | 0.775 | 18 | 19.3% | 8 | 2/8 |
+| fixed 0.5 | 0.500 | 1442 | 2.8% | 0 | 6/8 |
+| **p10** | 0.520 | 1365 | **2.4%** | **0** | **7/8** |
+| mtp | 0.075 | 2967 | 5.2% | 0 | 7/8 |
+
+The contrast that matters survives: the coefficient of variation of the
+LGM-minus-present difference falls from 19.8% under `tss` to 5.1% under `p10`,
+and LGM/present ratios stay dispersed (0.04 to 3.1 across taxa) rather than
+compressing toward 1 as they do under `mtp`.
+
+Validated against the known ranges rather than on internal statistics alone.
+Rasterising each species' IUCN polygon onto the prediction grid, `p10` recovers
+a modelled range 1.2 times the known range at the median -- slightly larger, as
+climatic suitability should be -- occupying about a quarter of the study
+extent. `tss` recovers 0.0 times it: for half the species tested it predicts
+nothing at all, including *Spermophilus pygmaeus*, whose 8329-cell range it
+reduces to zero while `p10` returns 8757.
+
+`nsample` also rises from 100 to 1000: under `p10` that cuts the worst-case
+CV across 32 rodents from 28.6% to 5.5%, and it is now cheap, since dropping
+`modEvA::optiThresh` made the same 120-fit grid run in 4.1 minutes rather than
+23.5.
+
+### Withdrawn: the planned resolvability screen
+
+An earlier note here proposed omitting species whose ranges were too small to
+model stably, reporting them as `not resolvable`. That was based on
+measurements taken under `tss`, where 11 of 28 rodents produced a zero range on
+at least one draw and median CV was 112%.
+
+Under `p10` the same 32 species give **zero** zero-range draws, a median CV of
+3.0%, and all 32 clearing any sensible size threshold. Every species that
+looked unresolvable was an artefact of the rule: *Arvicola amphibius* goes from
+4 cells to 84561, *Castor fiber* from 0 to 37180.
+
+The screen is therefore not implemented. Species genuinely too small for the
+grid may still exist, but none of the evidence gathered so far demonstrates
+one, and a screen justified by superseded measurements would remove real data
+on false grounds.
+
+## Products
+
+* `prepare_climate()` now defaults `dataset_present` to `dataset_past`, and
+  `agg_present` to `agg_past`, so one product is used throughout unless two are
+  deliberately requested. The previous defaults paired a WorldClim present with
+  CHELSA slices, which is precisely the mixed pipeline that made
+  `delta_from_present` unsound.
+* `prepare_climate()` writes `richcast_manifest.csv` recording the dataset,
+  time and aggregation behind each slice, and `check_climate_products()` reads
+  it and warns when the present-day slice came from a different product than
+  the time slices. Directories assembled by hand carry no manifest and are
+  reported as unverifiable rather than passing silently.
+
 ## To do
 
+* Implement the resolvability screen described above, once the cutoff is
+  grounded in the large-range measurements.
 * Plotting helpers for richness surfaces and per-species trajectories.
 * `pkgdown` site.

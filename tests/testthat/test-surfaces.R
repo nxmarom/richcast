@@ -165,3 +165,102 @@ test_that("the present richness row is built from the baseline, not the fit", {
   s1050 <- res$richness |> dplyr::filter(.data$time == 1050)
   expect_equal(pres$mean_richness, s1050$mean_richness)
 })
+
+# --- Replicate ensembles ----------------------------------------------------
+
+test_that("fit_replicates produces distinct draws", {
+  skip_if_not_installed("maxnet")
+  dir <- withr::local_tempdir()
+  clim <- structured_climate(dir, times = c(850, 950))
+  db <- two_species_db()
+
+  set <- fit_replicates(db, "Genus_low", clim, replicates = 4,
+                        predictors = c("bio01", "bio12"),
+                        land = fake_land(), quiet = TRUE)
+  expect_s3_class(set, "richcast_sdm_set")
+  expect_length(set$fits, 4)
+  # Replicate i uses seed + i - 1, so the seeds must all differ.
+  expect_equal(vapply(set$fits, function(f) f$seed, numeric(1)), 123:126)
+})
+
+test_that("project_replicates scores every replicate against one raster read", {
+  skip_if_not_installed("maxnet")
+  dir <- withr::local_tempdir()
+  clim <- structured_climate(dir, times = c(850, 950))
+  db <- two_species_db()
+  set <- fit_replicates(db, "Genus_low", clim, replicates = 3,
+                        predictors = c("bio01", "bio12"),
+                        land = fake_land(), quiet = TRUE)
+
+  ps <- project_replicates(set, clim, 850, quiet = TRUE)
+  expect_s3_class(ps, "richcast_projection_set")
+  expect_length(ps$cells, 3)
+  expect_length(ps$ranges, 3)
+
+  # Scoring one replicate this way must match project_sdm on the same model.
+  direct <- project_sdm(set$fits[[1]], clim, 850, quiet = TRUE)
+  expect_equal(ps$cells[1], direct$cells)
+})
+
+test_that("replicates = 1 leaves the series unchanged", {
+  skip_if_not_installed("maxnet")
+  dir <- withr::local_tempdir()
+  clim <- structured_climate(dir, times = c(850, 950))
+  db <- two_species_db()
+  args <- list(db, clim, times = c(850, 950),
+               focus = focus_box(c(0, 10, 0, 10)),
+               predictors = c("bio01", "bio12"), land = fake_land(),
+               resolution = 0.5, quiet = TRUE)
+
+  a <- suppressWarnings(do.call(run_hindcast_series, args))
+  b <- suppressWarnings(do.call(run_hindcast_series, c(args, list(replicates = 1))))
+  expect_equal(a$species$cells, b$species$cells)
+  expect_equal(a$richness$mean_richness, b$richness$mean_richness)
+  expect_false("mean_richness_lo" %in% names(a$richness))
+})
+
+test_that("replicates > 1 adds intervals that bracket the point estimate", {
+  skip_if_not_installed("maxnet")
+  dir <- withr::local_tempdir()
+  clim <- structured_climate(dir, times = c(850, 950))
+  db <- two_species_db()
+
+  res <- suppressWarnings(run_hindcast_series(
+    db, clim, times = c(850, 950),
+    focus = focus_box(c(0, 10, 0, 10)),
+    predictors = c("bio01", "bio12"), land = fake_land(),
+    resolution = 0.5, replicates = 5, quiet = TRUE
+  ))
+
+  expect_equal(res$replicates, 5L)
+  expect_true(all(c("cells_min", "cells_max", "cells_sd") %in% names(res$species)))
+  expect_true(all(res$species$cells_min <= res$species$cells))
+  expect_true(all(res$species$cells_max >= res$species$cells))
+
+  hind <- dplyr::filter(res$richness, .data$period != "present")
+  expect_true(all(c("mean_richness_lo", "mean_richness_hi") %in% names(hind)))
+  expect_true(all(hind$mean_richness_lo <= hind$mean_richness_hi))
+  # Each species keeps a full set of replicate fits.
+  expect_length(res$sets, nrow(res$models))
+})
+
+test_that("ensemble_series summarises spread across members", {
+  skip_if_not_installed("maxnet")
+  dir1 <- withr::local_tempdir(); dir2 <- withr::local_tempdir()
+  c1 <- structured_climate(dir1, times = c(850, 950))
+  c2 <- structured_climate(dir2, times = c(850, 950))
+  db <- two_species_db()
+  mk <- function(cl) suppressWarnings(run_hindcast_series(
+    db, cl, times = c(850, 950), focus = focus_box(c(0, 10, 0, 10)),
+    predictors = c("bio01", "bio12"), land = fake_land(),
+    resolution = 0.5, quiet = TRUE))
+
+  ens <- ensemble_series(list(a = mk(c1), b = mk(c2)))
+  expect_s3_class(ens, "tbl_df")
+  expect_true(all(c("a", "b", "ens_mean", "ens_min", "ens_max", "ens_sd") %in% names(ens)))
+  expect_equal(nrow(ens), 2)
+  expect_true(all(ens$ens_min <= ens$ens_max))
+
+  expect_error(ensemble_series(list(mk(c1))), "at least two")
+  expect_error(ensemble_series(list(mk(c1), mk(c2))), "must be named")
+})

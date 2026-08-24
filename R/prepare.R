@@ -17,10 +17,17 @@
 #' grid, and writes one GeoTIFF per variable per time slice in the layout
 #' [climate_dir()] expects.
 #'
-#' Present-day and palaeoclimate datasets usually differ in native resolution
-#' (WorldClim 2.1 at 5 arc-minutes against CHELSA-TraCE21k at 0.5), so the two
-#' aggregation factors are set independently and should be chosen to land both
-#' on the same cell size. `check_grids = TRUE` verifies that they did.
+#' By default the present-day slice is drawn from the same product as the
+#' palaeoclimate slices. Mixing them -- fitting on WorldClim while projecting
+#' onto CHELSA, as is easy to do by accident -- folds the step between the two
+#' products into every `delta_from_present`, and that step is species-specific
+#' in sign, so it does not cancel. Overriding `dataset_present` is supported
+#' (an observational present has its own arguments in its favour) but it is now
+#' a deliberate act, and [check_climate_products()] will say so afterwards.
+#'
+#' Where the two products differ in native resolution, set `agg_present` and
+#' `agg_past` so both land on the same cell size; `check_grids = TRUE` verifies
+#' that they did.
 #'
 #' Existing files are skipped, so an interrupted run can simply be restarted.
 #'
@@ -29,10 +36,14 @@
 #' @param times Numeric vector of years CE for the palaeoclimate slices.
 #' @param extent Numeric `c(xmin, xmax, ymin, ymax)` to clip to. Clipping at
 #'   this stage is what keeps the whole thing tractable.
-#' @param present_time Year CE for the present-day fitting slice.
-#' @param dataset_present,dataset_past pastclim dataset names.
-#' @param agg_present,agg_past Aggregation factors. Defaults pair WorldClim 5m
-#'   (factor 2) with CHELSA 0.5m (factor 20), both landing on 10 arc-minutes.
+#' @param present_time Year CE for the present-day fitting slice. Defaults to
+#'   1950, which is 0 BP and the present-day slice most reconstructions publish.
+#' @param dataset_past pastclim dataset for the palaeoclimate slices.
+#' @param dataset_present pastclim dataset for the present-day slice. Defaults
+#'   to `dataset_past`, so one product is used throughout unless you
+#'   deliberately ask for two. See details.
+#' @param agg_past,agg_present Aggregation factors; `agg_present` defaults to
+#'   `agg_past` for the same reason.
 #' @param present_dir Subdirectory name for the present-day slice.
 #' @param slice_fmt [sprintf()] template for palaeoclimate subdirectory names.
 #' @param check_grids Verify that every written slice shares one grid.
@@ -54,12 +65,12 @@ prepare_climate <- function(path,
                             vars,
                             times,
                             extent,
-                            present_time = 1985,
-                            dataset_present = "WorldClim_2.1_5m",
+                            present_time = 1950,
                             dataset_past = "CHELSA_trace21k_1.0_0.5m_vsi",
-                            agg_present = 2,
+                            dataset_present = dataset_past,
                             agg_past = 20,
-                            present_dir = "present_1985",
+                            agg_present = agg_past,
+                            present_dir = "present",
                             slice_fmt = "time_%04d",
                             check_grids = TRUE,
                             quiet = FALSE) {
@@ -142,9 +153,91 @@ prepare_climate <- function(path,
     }
   }
 
+  write_manifest(path, jobs, vars)
+
   src <- climate_dir(path, present = present_dir, slice_fmt = slice_fmt)
   if (check_grids) check_climate_grids(src, vars, quiet = quiet)
+  check_climate_products(src, quiet = quiet)
   invisible(src)
+}
+
+#' Record which dataset each slice came from
+#'
+#' Without this richcast cannot tell a CHELSA slice from a WorldClim one --
+#' they are both just GeoTIFFs on a matching grid -- and a mixed pipeline
+#' passes every check while quietly making `delta_from_present` meaningless.
+#' A manifest turns that into something detectable.
+#'
+#' @param path Slice directory.
+#' @param jobs The per-slice job list built by [prepare_climate()].
+#' @param vars Variables requested.
+#' @return Invisibly, the manifest data frame.
+#' @noRd
+write_manifest <- function(path, jobs, vars) {
+  man <- data.frame(
+    slice   = vapply(jobs, function(j) j$dir, character(1)),
+    time_ce = vapply(jobs, function(j) as.numeric(j$time), numeric(1)),
+    dataset = vapply(jobs, function(j) j$dataset, character(1)),
+    aggregation = vapply(jobs, function(j) as.numeric(j$agg), numeric(1)),
+    stringsAsFactors = FALSE
+  )
+  man$variables <- paste(vars, collapse = ",")
+  utils::write.csv(man, file.path(path, "richcast_manifest.csv"),
+                   row.names = FALSE)
+  invisible(man)
+}
+
+#' Warn when the present slice and the time slices come from different products
+#'
+#' Fitting on one climate product and projecting onto another folds the step
+#' between them into every `delta_from_present`. Measured on one species, that
+#' step was 42% of its present-day range and flipped it from above-present in
+#' 2 of 11 centuries to above-present in all 11 -- and the offset is
+#' species-specific in sign, so it does not cancel.
+#'
+#' Only works where the slices were prepared by [prepare_climate()], which
+#' leaves a manifest. Directories assembled by hand are unreadable in this
+#' respect and pass silently.
+#'
+#' @param climate A [climate_dir()] source.
+#' @param quiet Suppress the all-clear message.
+#' @return `TRUE` if consistent (or undeterminable), `FALSE` if mixed.
+#' @export
+check_climate_products <- function(climate, quiet = FALSE) {
+
+  if (!identical(climate$type, "climate_dir")) {
+    rc_abort("{.fn check_climate_products} only applies to a {.fn climate_dir} source.")
+  }
+  man_path <- file.path(climate$params$path, "richcast_manifest.csv")
+  if (!file.exists(man_path)) {
+    if (!quiet) {
+      cli::cli_alert_info(
+        "No manifest in {.path {climate$params$path}}; cannot verify that the slices share one climate product."
+      )
+    }
+    return(invisible(TRUE))
+  }
+
+  man <- utils::read.csv(man_path, stringsAsFactors = FALSE)
+  present_ds <- man$dataset[man$slice == climate$params$present]
+  past_ds    <- unique(man$dataset[man$slice != climate$params$present])
+
+  if (length(present_ds) == 0 || length(past_ds) == 0) {
+    return(invisible(TRUE))
+  }
+  if (!all(past_ds == present_ds)) {
+    cli::cli_warn(c(
+      "Present-day and palaeoclimate slices come from different products.",
+      "x" = "present: {.val {present_ds}}; slices: {.val {past_ds}}.",
+      "i" = "Every {.code delta_from_present} then contains the step between the two products, which is species-specific in sign and does not cancel.",
+      "i" = "Either prepare the present slice from {.val {past_ds}}, or set {.arg baseline} in {.fn run_hindcast_series} to a slice from the same product."
+    ))
+    return(invisible(FALSE))
+  }
+  if (!quiet) {
+    cli::cli_alert_success("All slices come from {.val {present_ds}}.")
+  }
+  invisible(TRUE)
 }
 
 #' Verify that every prepared slice shares one grid

@@ -140,6 +140,19 @@ with_planar_fallback <- function(f, what = "geometry operation", quiet = FALSE) 
 #' Check that a column exists in a data frame, with a helpful message
 #' @noRd
 check_col <- function(data, col, arg = "species_col") {
+  # A non-scalar here is almost always R's partial matching quietly redirecting
+  # a `species =` argument onto `species_col =` against an older installed
+  # version that has no `species` argument. Caught here it names the cause;
+  # left alone it surfaces as "the condition has length > 1" from the %in%.
+  if (!is.character(col) || length(col) != 1L || is.na(col)) {
+    rc_abort(c(
+      "{.arg {arg}} must be a single column name.",
+      "x" = "Got {.cls {class(col)[1]}} of length {length(col)}.",
+      if (length(col) > 1) c(
+        "i" = "Passing several names looks like a species filter. That is {.arg species}, not {.arg {arg}} -- and R partial-matches {.code species=} onto {.arg species_col} on versions without it, so check that richcast is up to date."
+      )
+    ))
+  }
   if (!col %in% names(data)) {
     rc_abort(c(
       "Column {.val {col}} not found.",

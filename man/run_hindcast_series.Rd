@@ -15,6 +15,8 @@ run_hindcast_series(
   window = NULL,
   resolution = 0.1,
   baseline = "present",
+  replicates = 1,
+  conf = 0.9,
   keep_surfaces = TRUE,
   on_error = c("warn", "stop"),
   quiet = FALSE,
@@ -49,6 +51,14 @@ the slice the models were fitted on; a numeric year uses that slice
 instead. Either way the baseline is projected through the same path as
 the hindcast slices. See details.}
 
+\item{replicates}{Number of replicate fits per species. Each redraws the
+presence and background samples and re-optimises the threshold, so the
+spread across replicates can be reported. \code{1} (default) fits once, exactly
+as before. See details.}
+
+\item{conf}{Interval width for replicate summaries. \code{0.9} gives the 5th and
+95th percentiles across replicates.}
+
 \item{keep_surfaces}{Retain the richness raster for every slice, so maps can
 be drawn afterwards. Stored wrapped, so the result still survives
 \code{saveRDS()}. Set \code{FALSE} for very large foci where only the summary
@@ -78,6 +88,37 @@ the time loop -- as the pipeline this package was extracted from did --
 repeats identical work once per slice, since the model depends only on
 present-day climate.
 }
+\section{Replicate intervals}{
+
+
+A single fit is one draw. Redrawing the pseudo-occurrences moves the answer
+a great deal: for one Tian Shan marmot, six seeds at the default
+\code{nsample = 100} spanned a 2.4-fold range in present-day extent and
+disagreed on the \emph{sign} of the change at one slice. With \code{replicates > 1},
+\code{res$species} gains \code{cells_min}, \code{cells_max} and \code{cells_sd}, \code{cells} becomes
+the replicate median, and \code{res$richness} gains \code{mean_richness_lo/hi/sd}.
+
+Richness intervals are built by stacking replicate \emph{r} of every species into
+richness surface \emph{r}, then taking quantiles across replicates -- not by
+combining per-species intervals, which would be wrong for a sum.
+
+A wide replicate interval is not always the right output. Where a species
+occupies a handful of grid cells, whether its suitability clears the
+threshold at all depends on which cells the sample happened to hit, and the
+estimate is an artefact of the draw rather than a measurement with error
+around it. Widening the interval implies the quantity exists and is merely
+imprecise. A future release will omit such species by default, reporting
+them as \verb{not resolvable}; for now, screen on \code{present_cells} and on the
+\code{cells_sd} column these replicates produce.
+
+Read these as \strong{precision, not accuracy}. They describe how much the answer
+moves when the sample is redrawn from the same range polygon under the same
+reconstruction. They exclude the range polygon being wrong, the
+reconstruction being wrong, niche conservatism, and the choice of model --
+and in this pipeline the climate-product difference has been \emph{larger} than
+the replicate spread. Use \code{\link[=ensemble_series]{ensemble_series()}} for that layer.
+}
+
 \section{Choosing a baseline}{
 
 

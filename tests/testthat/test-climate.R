@@ -112,3 +112,43 @@ test_that("prepare_climate rejects a file where a directory is required", {
     "set_data_path"
   )
 })
+
+# --- Product provenance -----------------------------------------------------
+
+write_manifest_fixture <- function(dir, present_ds, past_ds) {
+  utils::write.csv(
+    data.frame(slice = c("present", "time_0850", "time_0950"),
+               time_ce = c(1950, 850, 950),
+               dataset = c(present_ds, past_ds, past_ds),
+               aggregation = 20,
+               variables = "bio01"),
+    file.path(dir, "richcast_manifest.csv"), row.names = FALSE)
+}
+
+test_that("a mixed-product pipeline is detected and explained", {
+  dir <- withr::local_tempdir()
+  clim <- make_fake_climate(dir, times = c(850, 950), present = "present")
+  write_manifest_fixture(dir, "WorldClim_2.1_5m", "CHELSA_trace21k_1.0_0.5m_vsi")
+
+  expect_warning(check_climate_products(clim), "different products")
+  expect_warning(check_climate_products(clim), "does not cancel")
+  expect_false(suppressWarnings(check_climate_products(clim)))
+})
+
+test_that("a single-product pipeline passes", {
+  dir <- withr::local_tempdir()
+  clim <- make_fake_climate(dir, times = c(850, 950), present = "present")
+  write_manifest_fixture(dir, "CHELSA_trace21k_1.0_0.5m_vsi",
+                         "CHELSA_trace21k_1.0_0.5m_vsi")
+  expect_message(check_climate_products(clim), "come from")
+  expect_true(check_climate_products(clim, quiet = TRUE))
+})
+
+test_that("slices assembled by hand are reported as unverifiable, not as passing", {
+  # No manifest means richcast genuinely cannot tell; saying so is better than
+  # implying a check happened.
+  dir <- withr::local_tempdir()
+  clim <- make_fake_climate(dir, times = 850, present = "present")
+  expect_message(check_climate_products(clim), "cannot verify")
+  expect_true(check_climate_products(clim, quiet = TRUE))
+})

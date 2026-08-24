@@ -9,12 +9,12 @@ prepare_climate(
   vars,
   times,
   extent,
-  present_time = 1985,
-  dataset_present = "WorldClim_2.1_5m",
+  present_time = 1950,
   dataset_past = "CHELSA_trace21k_1.0_0.5m_vsi",
-  agg_present = 2,
+  dataset_present = dataset_past,
   agg_past = 20,
-  present_dir = "present_1985",
+  agg_present = agg_past,
+  present_dir = "present",
   slice_fmt = "time_\%04d",
   check_grids = TRUE,
   quiet = FALSE
@@ -30,12 +30,17 @@ prepare_climate(
 \item{extent}{Numeric \code{c(xmin, xmax, ymin, ymax)} to clip to. Clipping at
 this stage is what keeps the whole thing tractable.}
 
-\item{present_time}{Year CE for the present-day fitting slice.}
+\item{present_time}{Year CE for the present-day fitting slice. Defaults to
+1950, which is 0 BP and the present-day slice most reconstructions publish.}
 
-\item{dataset_present, dataset_past}{pastclim dataset names.}
+\item{dataset_past}{pastclim dataset for the palaeoclimate slices.}
 
-\item{agg_present, agg_past}{Aggregation factors. Defaults pair WorldClim 5m
-(factor 2) with CHELSA 0.5m (factor 20), both landing on 10 arc-minutes.}
+\item{dataset_present}{pastclim dataset for the present-day slice. Defaults
+to \code{dataset_past}, so one product is used throughout unless you
+deliberately ask for two. See details.}
+
+\item{agg_past, agg_present}{Aggregation factors; \code{agg_present} defaults to
+\code{agg_past} for the same reason.}
 
 \item{present_dir}{Subdirectory name for the present-day slice.}
 
@@ -54,10 +59,17 @@ grid, and writes one GeoTIFF per variable per time slice in the layout
 \code{\link[=climate_dir]{climate_dir()}} expects.
 }
 \details{
-Present-day and palaeoclimate datasets usually differ in native resolution
-(WorldClim 2.1 at 5 arc-minutes against CHELSA-TraCE21k at 0.5), so the two
-aggregation factors are set independently and should be chosen to land both
-on the same cell size. \code{check_grids = TRUE} verifies that they did.
+By default the present-day slice is drawn from the same product as the
+palaeoclimate slices. Mixing them -- fitting on WorldClim while projecting
+onto CHELSA, as is easy to do by accident -- folds the step between the two
+products into every \code{delta_from_present}, and that step is species-specific
+in sign, so it does not cancel. Overriding \code{dataset_present} is supported
+(an observational present has its own arguments in its favour) but it is now
+a deliberate act, and \code{\link[=check_climate_products]{check_climate_products()}} will say so afterwards.
+
+Where the two products differ in native resolution, set \code{agg_present} and
+\code{agg_past} so both land on the same cell size; \code{check_grids = TRUE} verifies
+that they did.
 
 Existing files are skipped, so an interrupted run can simply be restarted.
 }

@@ -14,6 +14,35 @@
 #' repeats identical work once per slice, since the model depends only on
 #' present-day climate.
 #'
+#' @section Replicate intervals:
+#'
+#' A single fit is one draw. Redrawing the pseudo-occurrences moves the answer
+#' a great deal: for one Tian Shan marmot, six seeds at the default
+#' `nsample = 100` spanned a 2.4-fold range in present-day extent and
+#' disagreed on the *sign* of the change at one slice. With `replicates > 1`,
+#' `res$species` gains `cells_min`, `cells_max` and `cells_sd`, `cells` becomes
+#' the replicate median, and `res$richness` gains `mean_richness_lo/hi/sd`.
+#'
+#' Richness intervals are built by stacking replicate *r* of every species into
+#' richness surface *r*, then taking quantiles across replicates -- not by
+#' combining per-species intervals, which would be wrong for a sum.
+#'
+#' A wide replicate interval is not always the right output. Where a species
+#' occupies a handful of grid cells, whether its suitability clears the
+#' threshold at all depends on which cells the sample happened to hit, and the
+#' estimate is an artefact of the draw rather than a measurement with error
+#' around it. Widening the interval implies the quantity exists and is merely
+#' imprecise. A future release will omit such species by default, reporting
+#' them as `not resolvable`; for now, screen on `present_cells` and on the
+#' `cells_sd` column these replicates produce.
+#'
+#' Read these as **precision, not accuracy**. They describe how much the answer
+#' moves when the sample is redrawn from the same range polygon under the same
+#' reconstruction. They exclude the range polygon being wrong, the
+#' reconstruction being wrong, niche conservatism, and the choice of model --
+#' and in this pipeline the climate-product difference has been *larger* than
+#' the replicate spread. Use [ensemble_series()] for that layer.
+#'
 #' @section Choosing a baseline:
 #'
 #' `delta_from_present` subtracts a baseline range size from each slice, so it
@@ -51,6 +80,12 @@
 #'   species are relevant. Should be at least the maximum fitting buffer.
 #' @param window Optional [gaussian_window()] for time-averaging.
 #' @param resolution Richness grid resolution in degrees.
+#' @param replicates Number of replicate fits per species. Each redraws the
+#'   presence and background samples and re-optimises the threshold, so the
+#'   spread across replicates can be reported. `1` (default) fits once, exactly
+#'   as before. See details.
+#' @param conf Interval width for replicate summaries. `0.9` gives the 5th and
+#'   95th percentiles across replicates.
 #' @param baseline Slice that `delta_from_present` is measured against, and
 #'   that the `present` richness row is built from. `"present"` (default) uses
 #'   the slice the models were fitted on; a numeric year uses that slice
@@ -79,6 +114,8 @@ run_hindcast_series <- function(db,
                                 window = NULL,
                                 resolution = 0.1,
                                 baseline = "present",
+                                replicates = 1,
+                                conf = 0.9,
                                 keep_surfaces = TRUE,
                                 on_error = c("warn", "stop"),
                                 quiet = FALSE,
@@ -95,10 +132,20 @@ run_hindcast_series <- function(db,
   targets <- select_species(db, focus, species, prefilter_buffer, quiet)
 
   models <- list()
-  ranges <- list()      # ranges[[time]][[species]]
-  baselines <- list()   # baseline range per species
+  sets <- list()          # replicate sets, when replicates > 1
+  ranges <- list()        # ranges[[time]][[species]] -- representative draw
+  rep_ranges <- list()    # rep_ranges[[time]][[species]][[replicate]]
+  baselines <- list()     # baseline range per species
   counts <- list()
-  for (tt in as.character(times)) ranges[[tt]] <- list()
+
+  if (!is.numeric(replicates) || length(replicates) != 1 || replicates < 1) {
+    rc_abort("{.arg replicates} must be a single positive number.")
+  }
+  replicates <- as.integer(replicates)
+  for (tt in as.character(times)) {
+    ranges[[tt]] <- list()
+    rep_ranges[[tt]] <- list()
+  }
 
   # A progress bar redraws on every update, which is useful at a console and
   # pure noise in a knitted document, so it follows `quiet` like everything else.
@@ -111,11 +158,22 @@ run_hindcast_series <- function(db,
     sp <- targets$species[i]
     if (!quiet) cli::cli_progress_update(.envir = environment())
 
-    fitted <- try_step(
-      fit_sdm(db, sp, climate, quiet = quiet, ...),
-      what = "fit", species = sp, on_error = on_error
-    )
-    if (is.null(fitted)) next
+    if (replicates > 1) {
+      set <- try_step(
+        fit_replicates(db, sp, climate, replicates = replicates,
+                       quiet = TRUE, ...),
+        what = "fit", species = sp, on_error = on_error
+      )
+      if (is.null(set)) next
+      sets[[sp]] <- set
+      fitted <- set$fits[[1]]
+    } else {
+      fitted <- try_step(
+        fit_sdm(db, sp, climate, quiet = quiet, ...),
+        what = "fit", species = sp, on_error = on_error
+      )
+      if (is.null(fitted)) next
+    }
     models[[sp]] <- fitted
 
     # The baseline every delta is measured against. Projected through the same
@@ -137,16 +195,37 @@ run_hindcast_series <- function(db,
     baselines[[sp]] <- base_range
 
     for (tt in times) {
-      proj <- try_step(
-        project_sdm(fitted, climate, tt, window = window, quiet = quiet),
-        what = paste("project onto", tt), species = sp, on_error = on_error
-      )
-      if (is.null(proj)) next
-      ranges[[as.character(tt)]][[sp]] <- proj$range
-      counts[[length(counts) + 1L]] <- tibble::tibble(
-        species = sp, time = tt, cells = proj$cells,
-        present_cells = base_cells
-      )
+      if (replicates > 1) {
+        ps <- try_step(
+          project_replicates(sets[[sp]], climate, tt, window = window,
+                             quiet = quiet),
+          what = paste("project onto", tt), species = sp, on_error = on_error
+        )
+        if (is.null(ps)) next
+        rep_ranges[[as.character(tt)]][[sp]] <- ps$ranges
+        # The representative range is the replicate whose extent is the median,
+        # so maps show a typical draw rather than an arbitrary one.
+        med <- which.min(abs(ps$cells - stats::median(ps$cells)))[1]
+        ranges[[as.character(tt)]][[sp]] <- ps$ranges[[med]]
+        cell_val <- stats::median(ps$cells)
+        counts[[length(counts) + 1L]] <- tibble::tibble(
+          species = sp, time = tt, cells = cell_val,
+          present_cells = base_cells,
+          cells_min = min(ps$cells), cells_max = max(ps$cells),
+          cells_sd = stats::sd(ps$cells)
+        )
+      } else {
+        proj <- try_step(
+          project_sdm(fitted, climate, tt, window = window, quiet = quiet),
+          what = paste("project onto", tt), species = sp, on_error = on_error
+        )
+        if (is.null(proj)) next
+        ranges[[as.character(tt)]][[sp]] <- proj$range
+        counts[[length(counts) + 1L]] <- tibble::tibble(
+          species = sp, time = tt, cells = proj$cells,
+          present_cells = base_cells
+        )
+      }
     }
   }
   if (!quiet) cli::cli_progress_done(.envir = environment())
@@ -182,6 +261,33 @@ run_hindcast_series <- function(db,
   })
   richness <- dplyr::bind_rows(richness)
 
+  # --- Richness intervals across replicates -------------------------------
+  # Richness is a sum over species, so per-taxon intervals cannot simply be
+  # added. Replicate r of every species is stacked together to give richness
+  # replicate r, and the spread is taken across those. Pairing independent
+  # draws is arbitrary but valid as a Monte Carlo sample of the joint; adding
+  # marginals is neither.
+  if (replicates > 1) {
+    lo_p <- (1 - conf) / 2
+    hi_p <- 1 - lo_p
+    reps <- lapply(seq_len(replicates), function(r) {
+      vapply(times, function(tt) {
+        key <- as.character(tt)
+        per_sp <- lapply(rep_ranges[[key]], function(x) x[[r]])
+        per_sp <- per_sp[!vapply(per_sp, is.null, logical(1))]
+        rr <- richness_stack(per_sp, focus, resolution = resolution,
+                             quiet = TRUE)
+        mean(terra::values(rr, mat = FALSE, na.rm = TRUE))
+      }, numeric(1))
+    })
+    m <- do.call(rbind, reps)              # replicates x times
+    richness$mean_richness_lo <- apply(m, 2, stats::quantile, probs = lo_p,
+                                       na.rm = TRUE)
+    richness$mean_richness_hi <- apply(m, 2, stats::quantile, probs = hi_p,
+                                       na.rm = TRUE)
+    richness$mean_richness_sd <- apply(m, 2, stats::sd, na.rm = TRUE)
+  }
+
   # --- Present-day baseline ----------------------------------------------
   present_ranges <- baselines[names(models)]
   present_r <- richness_stack(present_ranges, focus,
@@ -192,6 +298,11 @@ run_hindcast_series <- function(db,
   present_row$species_contributing <- sum(
     !vapply(present_ranges, is.null, logical(1))
   )
+  if (replicates > 1) {
+    present_row$mean_richness_lo <- NA_real_
+    present_row$mean_richness_hi <- NA_real_
+    present_row$mean_richness_sd <- NA_real_
+  }
   present_row$period <- "present"
   richness$period <- paste0("hindcast_", richness$time)
   richness <- dplyr::bind_rows(present_row, richness)
@@ -225,7 +336,9 @@ run_hindcast_series <- function(db,
       surfaces = surfaces,
       times    = times,
       focus    = focus,
-      baseline = baseline
+      baseline = baseline,
+      replicates = replicates,
+      sets     = sets
     ),
     class = "richcast_series"
   )

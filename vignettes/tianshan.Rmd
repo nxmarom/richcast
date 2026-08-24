@@ -123,7 +123,7 @@ db <- build_taxon_db(
   traits = rodent_traits
 )
 #> ℹ Reading 'data_0.shp'
-#> ✔ Reading 'data_0.shp' [1.2s]
+#> ✔ Reading 'data_0.shp' [1s]
 #> 
 #> ℹ Dissolving 3090 features into 2345 species ranges.
 #> ! Spherical union failed on invalid geometry; retrying in planar mode.
@@ -185,38 +185,38 @@ res$models |>
 #> # A tibble: 32 × 6
 #>    species                   auc threshold n_presence n_background present_cells
 #>    <chr>                   <dbl>     <dbl>      <int>        <int>         <int>
-#>  1 Arvicola_amphibius      0.992     0.94         100          100             0
-#>  2 Ellobius_talpinus       0.989     0.9          100          100             0
-#>  3 Phodopus_sungorus       0.987     0.91         100          100            59
-#>  4 Micromys_minutus        0.986     0.89         100          100          1924
-#>  5 Spermophilus_pygmaeus   0.986     0.88         100          100             0
-#>  6 Allocricetulus_eversma… 0.984     0.88         100          100             0
-#>  7 Sicista_subtilis        0.983     0.84         100          100             0
-#>  8 Bandicota_bengalensis   0.983     0.9          100          100             0
-#>  9 Meriones_crassus        0.981     0.87         100          100             0
-#> 10 Lasiopodomys_brandtii   0.978     0.866         93          100            50
-#> 11 Microtus_agrestis       0.977     0.86         100          100           100
-#> 12 Lagurus_lagurus         0.977     0.908         83          100            66
-#> 13 Rattus_norvegicus       0.973     0.88         100          100           609
-#> 14 Rattus_tanezumi         0.971     0.862         74          100           405
-#> 15 Marmota_bobak           0.970     0.831         70          100           129
-#> 16 Myopus_schisticolor     0.967     0.83         100          100          1111
-#> 17 Castor_fiber            0.962     0.858         69          100             0
-#> 18 Rhombomys_opimus        0.961     0.81         100          100           528
-#> 19 Apodemus_agrarius       0.960     0.77         100          100          4005
-#> 20 Marmota_himalayana      0.958     0.84         100          100            34
-#> 21 Meriones_tamariscinus   0.956     0.794         90          100          3366
-#> 22 Cricetulus_barabensis   0.956     0.85         100          100           238
-#> 23 Pteromys_volans         0.956     0.79         100          100          8052
-#> 24 Meriones_unguiculatus   0.952     0.79         100          100          1347
-#> 25 Dryomys_nitedula        0.951     0.795         93          100          1958
-#> 26 Meriones_meridianus     0.949     0.8          100          100          1733
-#> 27 Microtus_socialis       0.946     0.782         59          100          2546
-#> 28 Apodemus_uralensis      0.944     0.79         100          100          1645
-#> 29 Marmota_sibirica        0.939     0.84         100          100           405
-#> 30 Marmota_baibacina       0.930     0.72         100          100          1708
-#> 31 Mus_musculus            0.916     0.71         100          100         74060
-#> 32 Rattus_rattus           0.913     0.72         100          100         26581
+#>  1 Sicista_subtilis        0.989     0.515       1000         1000         13826
+#>  2 Allocricetulus_eversma… 0.986     0.504       1000         1000          9005
+#>  3 Bandicota_bengalensis   0.985     0.515       1000         1000         13981
+#>  4 Spermophilus_pygmaeus   0.985     0.530       1000         1000          8757
+#>  5 Ellobius_talpinus       0.984     0.525       1000         1000         14814
+#>  6 Pteromys_volans         0.977     0.500       1000         1000         83269
+#>  7 Arvicola_amphibius      0.977     0.526       1000         1000         81214
+#>  8 Phodopus_sungorus       0.975     0.484       1000         1000          7480
+#>  9 Rattus_tanezumi         0.974     0.472        669         1000         28997
+#> 10 Myopus_schisticolor     0.972     0.487       1000         1000         67877
+#> 11 Lagurus_lagurus         0.971     0.493       1000         1000         27311
+#> 12 Microtus_agrestis       0.970     0.486       1000         1000         62648
+#> 13 Meriones_crassus        0.969     0.445       1000         1000         27248
+#> 14 Marmota_bobak           0.965     0.512       1000         1000          7388
+#> 15 Lasiopodomys_brandtii   0.962     0.510       1000         1000          5809
+#> 16 Marmota_himalayana      0.961     0.501       1000         1000         11471
+#> 17 Meriones_meridianus     0.959     0.467       1000         1000         30160
+#> 18 Rhombomys_opimus        0.959     0.449       1000         1000         25328
+#> 19 Castor_fiber            0.956     0.530       1000         1000         34926
+#> 20 Micromys_minutus        0.954     0.530       1000         1000         95981
+#> 21 Apodemus_agrarius       0.953     0.496       1000         1000         73122
+#> 22 Cricetulus_barabensis   0.951     0.447       1000         1000         25263
+#> 23 Apodemus_uralensis      0.945     0.494       1000         1000         46943
+#> 24 Marmota_sibirica        0.945     0.466       1000         1000          9004
+#> 25 Rattus_norvegicus       0.944     0.468       1000         1000        107498
+#> 26 Dryomys_nitedula        0.940     0.489       1000         1000         41263
+#> 27 Meriones_tamariscinus   0.934     0.460       1000         1000         21249
+#> 28 Microtus_socialis       0.929     0.492       1000         1000         20015
+#> 29 Meriones_unguiculatus   0.926     0.489       1000         1000         19993
+#> 30 Marmota_baibacina       0.919     0.490       1000         1000          6296
+#> 31 Mus_musculus            0.919     0.414       1000         1000        192304
+#> 32 Rattus_rattus           0.917     0.419       1000         1000        106539
 ```
 
 AUC here is computed on the training data, so it measures fit rather than
@@ -236,24 +236,9 @@ all zero by construction.
 res$models |>
   filter(n_presence < 100 | present_cells == 0) |>
   arrange(present_cells, n_presence)
-#> # A tibble: 15 × 6
-#>    species                   auc threshold n_presence n_background present_cells
-#>    <chr>                   <dbl>     <dbl>      <int>        <int>         <int>
-#>  1 Castor_fiber            0.962     0.858         69          100             0
-#>  2 Allocricetulus_eversma… 0.984     0.88         100          100             0
-#>  3 Arvicola_amphibius      0.992     0.94         100          100             0
-#>  4 Bandicota_bengalensis   0.983     0.9          100          100             0
-#>  5 Ellobius_talpinus       0.989     0.9          100          100             0
-#>  6 Meriones_crassus        0.981     0.87         100          100             0
-#>  7 Sicista_subtilis        0.983     0.84         100          100             0
-#>  8 Spermophilus_pygmaeus   0.986     0.88         100          100             0
-#>  9 Lasiopodomys_brandtii   0.978     0.866         93          100            50
-#> 10 Lagurus_lagurus         0.977     0.908         83          100            66
-#> 11 Marmota_bobak           0.970     0.831         70          100           129
-#> 12 Rattus_tanezumi         0.971     0.862         74          100           405
-#> 13 Dryomys_nitedula        0.951     0.795         93          100          1958
-#> 14 Microtus_socialis       0.946     0.782         59          100          2546
-#> 15 Meriones_tamariscinus   0.956     0.794         90          100          3366
+#> # A tibble: 0 × 6
+#> # ℹ 6 variables: species <chr>, auc <dbl>, threshold <dbl>, n_presence <int>,
+#> #   n_background <int>, present_cells <int>
 ```
 
 The four species with no present-day range are worth dwelling on, because
@@ -276,18 +261,18 @@ res$richness |>
 #> # A tibble: 12 × 5
 #>    period         time mean_richness max_richness karadja_max
 #>    <chr>         <dbl>         <dbl>        <dbl>       <dbl>
-#>  1 present          NA          1.64            6           4
-#>  2 hindcast_850    850          1.26            6           4
-#>  3 hindcast_950    950          1.86            6           5
-#>  4 hindcast_1050  1050          1.44            6           4
-#>  5 hindcast_1150  1150          1.47            6           4
-#>  6 hindcast_1250  1250          1.35            6           4
-#>  7 hindcast_1350  1350          1.21            5           4
-#>  8 hindcast_1450  1450          1.43            6           5
-#>  9 hindcast_1550  1550          1.41            6           5
-#> 10 hindcast_1650  1650          1.44            6           5
-#> 11 hindcast_1750  1750          1.36            6           4
-#> 12 hindcast_1850  1850          1.65            7           4
+#>  1 present          NA          8.34           18          15
+#>  2 hindcast_850    850          8.35           19          14
+#>  3 hindcast_950    950          8.43           19          13
+#>  4 hindcast_1050  1050          8.41           19          14
+#>  5 hindcast_1150  1150          8.42           20          14
+#>  6 hindcast_1250  1250          8.33           20          13
+#>  7 hindcast_1350  1350          8.41           21          13
+#>  8 hindcast_1450  1450          8.42           20          13
+#>  9 hindcast_1550  1550          8.24           18          14
+#> 10 hindcast_1650  1650          8.49           19          14
+#> 11 hindcast_1750  1750          8.37           19          15
+#> 12 hindcast_1850  1850          8.24           18          15
 ```
 
 
@@ -437,7 +422,7 @@ richness_surface(res, 1350)
 #> source(s)   : memory
 #> name        : richness
 #> min value   :        0
-#> max value   :        5
+#> max value   :       21
 ```
 
 ## Species trajectories
@@ -455,17 +440,17 @@ res$species |>
 #> # A tibble: 11 × 4
 #>     time cells delta_from_previous delta_from_present
 #>    <dbl> <int>               <int>              <int>
-#>  1   850  1276                  NA               -432
-#>  2   950  3683                2407               1975
-#>  3  1050  1495               -2188               -213
-#>  4  1150  2277                 782                569
-#>  5  1250  2020                -257                312
-#>  6  1350  1342                -678               -366
-#>  7  1450  2637                1295                929
-#>  8  1550  1711                -926                  3
-#>  9  1650  2619                 908                911
-#> 10  1750  2309                -310                601
-#> 11  1850  2962                 653               1254
+#>  1   850  7262                  NA                966
+#>  2   950  7508                 246               1212
+#>  3  1050  7224                -284                928
+#>  4  1150  6734                -490                438
+#>  5  1250  6641                 -93                345
+#>  6  1350  6867                 226                571
+#>  7  1450  7395                 528               1099
+#>  8  1550  8288                 893               1992
+#>  9  1650  8371                  83               2075
+#> 10  1750  7264               -1107                968
+#> 11  1850  9438                2174               3142
 ```
 
 Both deltas are computed after sorting time numerically. Note the single `NA`
@@ -578,17 +563,17 @@ comparison |> mutate(difference = chelsa_fit - worldclim_fit)
 #> # A tibble: 11 × 4
 #>     time chelsa_fit worldclim_fit difference
 #>    <dbl>      <dbl>         <dbl>      <dbl>
-#>  1   850       1.26          1.48    -0.219 
-#>  2   950       1.86          1.56     0.301 
-#>  3  1050       1.44          1.57    -0.135 
-#>  4  1150       1.47          1.52    -0.0432
-#>  5  1250       1.35          1.45    -0.103 
-#>  6  1350       1.21          1.48    -0.276 
-#>  7  1450       1.43          1.50    -0.0657
-#>  8  1550       1.41          1.50    -0.0855
-#>  9  1650       1.44          1.57    -0.128 
-#> 10  1750       1.36          1.54    -0.179 
-#> 11  1850       1.65          1.63     0.0234
+#>  1   850       8.35          8.17      0.188
+#>  2   950       8.43          8.14      0.296
+#>  3  1050       8.41          8.19      0.227
+#>  4  1150       8.42          8.18      0.235
+#>  5  1250       8.33          8.14      0.185
+#>  6  1350       8.41          8.14      0.273
+#>  7  1450       8.42          8.14      0.280
+#>  8  1550       8.24          7.97      0.272
+#>  9  1650       8.49          8.23      0.267
+#> 10  1750       8.37          8.22      0.152
+#> 11  1850       8.24          7.99      0.250
 ```
 
 
@@ -621,11 +606,11 @@ tibble::tibble(
 #> # A tibble: 2 × 3
 #>   fitted_on      median_auc zero_range_sp
 #>   <chr>               <dbl>         <int>
-#> 1 CHELSA 1950         0.965             8
-#> 2 WorldClim 1985      0.961             4
+#> 1 CHELSA 1950         0.960             0
+#> 2 WorldClim 1985      0.955             0
 
 cor(comparison$worldclim_fit, comparison$chelsa_fit)
-#> [1] 0.627347
+#> [1] 0.8415259
 ```
 
 This is worth taking seriously rather than picking a winner. Median AUC is

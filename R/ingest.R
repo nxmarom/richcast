@@ -40,17 +40,31 @@ print.richcast_range_source <- function(x, ...) {
 #' @param path Path to the shapefile (`.shp`) or geopackage.
 #' @param species_col Name of the binomial column. IUCN exports normally call
 #'   this `SCI_NAME`.
-#' @param layer Optional layer name, for multi-layer sources.
+#' @param species Optional character vector of binomials. When given, only
+#'   these are read, via an OGR attribute query, and names are matched in both
+#'   `Genus species` and `Genus_species` form. Worth using when you want a
+#'   handful of taxa from a continental download: the read itself is no faster
+#'   on an unindexed shapefile, but nothing unwanted is materialised and the
+#'   dissolve shrinks accordingly.
+#' @param layer Optional layer name, for multi-layer sources. Defaults to the
+#'   file name without its extension.
 #' @return A `richcast_range_source`.
 #' @seealso [sf_polygons()], [gbif_occurrences()], [build_taxon_db()]
 #' @examples
 #' src <- iucn_shapefile("~/iucn_rodentia/data_0.shp")
 #' print(src)
+#'
+#' # Only the taxa you actually intend to model:
+#' iucn_shapefile(
+#'   "~/iucn_artiodactyla/data_0.shp",
+#'   species = c("Gazella gazella", "Sus scrofa", "Capra ibex")
+#' )
 #' @export
-iucn_shapefile <- function(path, species_col = "SCI_NAME", layer = NULL) {
+iucn_shapefile <- function(path, species_col = "SCI_NAME", species = NULL,
+                           layer = NULL) {
   new_range_source(
     "iucn_shapefile",
-    path = path, species_col = species_col, layer = layer,
+    path = path, species_col = species_col, species = species, layer = layer,
     resolver = function(params) {
       if (!file.exists(params$path)) {
         rc_abort(c(
@@ -62,16 +76,78 @@ iucn_shapefile <- function(path, species_col = "SCI_NAME", layer = NULL) {
           )
         ))
       }
-      cli::cli_progress_step("Reading {.path {basename(params$path)}}")
-      x <- if (is.null(params$layer)) {
-        sf::st_read(params$path, quiet = TRUE)
+      lyr <- params$layer %||% tools::file_path_sans_ext(basename(params$path))
+
+      if (is.null(params$species)) {
+        cli::cli_progress_step("Reading {.path {basename(params$path)}}")
+        x <- if (is.null(params$layer)) {
+          sf::st_read(params$path, quiet = TRUE)
+        } else {
+          sf::st_read(params$path, layer = lyr, quiet = TRUE)
+        }
       } else {
-        sf::st_read(params$path, layer = params$layer, quiet = TRUE)
+        cli::cli_progress_step(
+          "Reading {length(params$species)} species from {.path {basename(params$path)}}"
+        )
+        x <- read_species_subset(params$path, lyr, params$species_col,
+                                 params$species)
       }
+
       check_col(x, params$species_col)
+      if (nrow(x) == 0) {
+        rc_abort(c(
+          "No features matched.",
+          "i" = "Check the names against the {.val {params$species_col}} column of the source."
+        ))
+      }
       x
     }
   )
+}
+
+#' Read only the requested species from a vector source
+#'
+#' Uses an OGR SQL predicate so unwanted features are never materialised in R.
+#' On an unindexed shapefile this is not faster to *read* -- OGR scans every
+#' feature either way, and evaluating the predicate costs a little extra -- but
+#' it keeps memory down and, more importantly, spares the dissolve: unioning 8
+#' species is a different proposition from unioning 322.
+#'
+#' Names are matched in both spaced and underscored form, since range databases
+#' and trait tables disagree about which they use.
+#'
+#' @param path,layer Source and layer name.
+#' @param species_col Column holding binomials in the source.
+#' @param species Character vector of species to keep.
+#' @return An `sf` object.
+#' @noRd
+read_species_subset <- function(path, layer, species_col, species) {
+
+  # Match either spelling, and escape quotes rather than trusting the input.
+  variants <- unique(c(gsub("_", " ", species), gsub(" ", "_", species)))
+  variants <- variants[!is.na(variants) & nzchar(variants)]
+  quoted <- paste0("'", gsub("'", "''", variants), "'")
+
+  query <- sprintf('SELECT * FROM "%s" WHERE "%s" IN (%s)',
+                   layer, species_col, paste(quoted, collapse = ", "))
+
+  out <- tryCatch(
+    sf::st_read(path, query = query, quiet = TRUE),
+    error = function(e) NULL
+  )
+
+  if (is.null(out)) {
+    # Not every driver supports SQL. Falling back is slower and heavier, but a
+    # working slow path beats an error the user cannot act on.
+    cli::cli_alert_warning(
+      "Attribute query unsupported by this driver; reading in full and filtering."
+    )
+    out <- sf::st_read(path, quiet = TRUE)
+    check_col(out, species_col)
+    out <- out[normalise_species(out[[species_col]]) %in%
+                 normalise_species(species), ]
+  }
+  out
 }
 
 #' Range source: arbitrary sf polygons
@@ -336,8 +412,12 @@ build_taxon_db <- function(ranges,
 
 #' @export
 print.richcast_db <- function(x, ...) {
+  # Count by name rather than by arithmetic on ncol(): st_drop_geometry() keeps
+  # the class but removes a column, which made a trait-less database report
+  # "-1 trait columns".
+  n_traits <- length(setdiff(names(x), c("species", attr(x, "sf_column"))))
   cli::cli_text(
-    "{.cls richcast_db}: {nrow(x)} species, {ncol(x) - 2} trait column{?s}"
+    "{.cls richcast_db}: {nrow(x)} species, {n_traits} trait column{?s}"
   )
   NextMethod()
 }
