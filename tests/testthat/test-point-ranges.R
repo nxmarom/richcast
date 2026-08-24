@@ -58,6 +58,13 @@ test_that("more occurrences reach the model as more presences", {
                   quiet = TRUE)
   expect_lte(few$n_presence, 10)
   expect_gt(many$n_presence, few$n_presence)
+
+  # For occurrences, range_cells counts distinct occupied cells, so it is
+  # bounded by the record count and rises with survey effort rather than
+  # describing the range on its own.
+  expect_lte(few$range_cells, 10)
+  expect_lte(many$range_cells, many$n_presence)
+  expect_gt(many$range_cells, few$range_cells)
 })
 
 test_that("point ranges get a background instead of aborting", {

@@ -6,7 +6,7 @@ make_series <- function(keep = TRUE) {
     db, clim, times = c(850, 950),
     focus = focus_box(c(0, 10, 0, 10), label = "test"),
     predictors = c("bio01", "bio12"), land = fake_land(),
-    resolution = 0.5, keep_surfaces = keep, quiet = TRUE
+    resolution = 0.5, keep_surfaces = keep, min_cells = 0, quiet = TRUE
   ))
 }
 
@@ -84,7 +84,7 @@ test_that("a slice where every projection failed is flagged, not reported as zer
       db, clim, times = c(850, 950),
       focus = focus_box(c(0, 10, 0, 10)),
       predictors = c("bio01", "bio12"), land = fake_land(),
-      resolution = 0.5, on_error = "warn", quiet = TRUE
+      resolution = 0.5, on_error = "warn", min_cells = 0, quiet = TRUE
     )
   )
   expect_true(any(grepl("No species contributed a range at 950", warnings_seen)))
@@ -125,7 +125,7 @@ test_that("a numeric baseline changes the deltas and is recorded", {
   args <- list(db, clim, times = c(850, 950, 1050),
                focus = focus_box(c(0, 10, 0, 10)),
                predictors = c("bio01", "bio12"), land = fake_land(),
-               resolution = 0.5, quiet = TRUE)
+               resolution = 0.5, min_cells = 0, quiet = TRUE)
 
   d_pres <- suppressWarnings(do.call(run_hindcast_series, args))
   d_1050 <- suppressWarnings(do.call(run_hindcast_series,
@@ -158,7 +158,7 @@ test_that("the present richness row is built from the baseline, not the fit", {
     db, clim, times = c(850, 950, 1050),
     focus = focus_box(c(0, 10, 0, 10)),
     predictors = c("bio01", "bio12"), land = fake_land(),
-    resolution = 0.5, baseline = 1050, quiet = TRUE
+    resolution = 0.5, baseline = 1050, min_cells = 0, quiet = TRUE
   ))
   # With baseline = 1050, the "present" row must equal the 1050 hindcast row.
   pres <- res$richness |> dplyr::filter(.data$period == "present")
@@ -210,7 +210,7 @@ test_that("replicates = 1 leaves the series unchanged", {
   args <- list(db, clim, times = c(850, 950),
                focus = focus_box(c(0, 10, 0, 10)),
                predictors = c("bio01", "bio12"), land = fake_land(),
-               resolution = 0.5, quiet = TRUE)
+               resolution = 0.5, min_cells = 0, quiet = TRUE)
 
   a <- suppressWarnings(do.call(run_hindcast_series, args))
   b <- suppressWarnings(do.call(run_hindcast_series, c(args, list(replicates = 1))))
@@ -229,7 +229,7 @@ test_that("replicates > 1 adds intervals that bracket the point estimate", {
     db, clim, times = c(850, 950),
     focus = focus_box(c(0, 10, 0, 10)),
     predictors = c("bio01", "bio12"), land = fake_land(),
-    resolution = 0.5, replicates = 5, quiet = TRUE
+    resolution = 0.5, replicates = 5, min_cells = 0, quiet = TRUE
   ))
 
   expect_equal(res$replicates, 5L)
@@ -253,7 +253,7 @@ test_that("ensemble_series summarises spread across members", {
   mk <- function(cl) suppressWarnings(run_hindcast_series(
     db, cl, times = c(850, 950), focus = focus_box(c(0, 10, 0, 10)),
     predictors = c("bio01", "bio12"), land = fake_land(),
-    resolution = 0.5, quiet = TRUE))
+    resolution = 0.5, min_cells = 0, quiet = TRUE))
 
   ens <- ensemble_series(list(a = mk(c1), b = mk(c2)))
   expect_s3_class(ens, "tbl_df")

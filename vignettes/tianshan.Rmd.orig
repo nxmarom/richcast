@@ -157,31 +157,32 @@ res$models |>
 
 AUC here is computed on the training data, so it measures fit rather than
 transferability, and should be read as a screen for models that failed rather
-than as evidence a model is good. Thresholds are TSS-optimised per species.
+than as evidence a model is good. Thresholds come from the default `p10` rule
+— the tenth percentile of predictions at training presences — so they cluster
+near 0.5 rather than being pushed up by the background, as a TSS-optimised
+cutoff would be.
 
-Two columns deserve a look before trusting any of the rest. `n_presence` is
-the number of presence samples actually drawn: `fit_sdm()` asks for 100, but a
-species whose range covers fewer than 100 cells at this resolution cannot
-supply them, and those models rest on a thinner base than the AUC suggests.
-`present_cells` is the modelled present-day range in cells — where it is zero,
-the species contributes nothing to richness at any slice and its deltas are
-all zero by construction.
+The column to look at before trusting the rest is `range_cells`: how many grid
+cells each species' range covers, and so how many distinct climate vectors the
+model had to learn from. Presences are drawn with replacement, so `nsample`
+cannot exceed it — asking for 1000 samples from a 20-cell range returns each
+cell about 50 times, not 1000 observations. `present_cells` is the modelled
+present-day range; where it is zero the species contributes nothing to richness
+at any slice and its deltas are all zero by construction.
 
 ```{r thin-models}
 res$models |>
-  filter(n_presence < 100 | present_cells == 0) |>
-  arrange(present_cells, n_presence)
+  filter(!resolvable | present_cells == 0) |>
+  arrange(range_cells, present_cells)
 ```
 
-The four species with no present-day range are worth dwelling on, because
-they carry some of the *highest* AUCs in the table. That combination is
-diagnostic rather than contradictory: a model can separate its training
-presences from its background almost perfectly and still place its
-TSS-optimised threshold above anything the study region actually offers. For
-these taxa the Tian Shan sits at the edge of a range centred elsewhere, so the
-honest reading is "no suitable habitat here", not "good model". They are left
-in so the count is visible; filter them out before interpreting richness if
-you would rather they not dilute the mean.
+Nothing is listed. Every one of these 32 species covers at least 3161 cells at
+this resolution — the narrowest is *Marmota baibacina* — so all of them clear
+`min_cells` comfortably and none produces an empty present-day range. That is
+worth stating rather than passing over, because it is exactly why the
+resolvability screen was once thought unnecessary: a dataset of wide-ranging
+Eurasian rodents cannot exhibit the failure it guards against. See
+`?richcast-resolvability` for an assemblage that can.
 
 ## Richness over time
 

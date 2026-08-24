@@ -33,6 +33,12 @@
 #'   across 32 rodent species under the default `p10` threshold, raising this
 #'   from 100 to 1000 cut the worst-case coefficient of variation in modelled
 #'   range size from 28.6% to 5.5%, at negligible cost.
+#'
+#'   It buys nothing once the range runs out of cells. Sampling is with
+#'   replacement, so a range covering `k` grid cells yields `k` distinct
+#'   climate vectors however large `nsample` is; beyond that point raising it
+#'   only duplicates rows. The returned `range_cells` reports `k`, and
+#'   [run_hindcast_series()] screens on it.
 #' @param buffer Study-extent buffer around the range, as a proportion of the
 #'   range's bounding-box diagonal.
 #' @param buffer_range Minimum and maximum buffer in degrees, clamping `buffer`.
@@ -56,7 +62,9 @@
 #'   restrict the background to land. Defaults to Natural Earth at medium
 #'   resolution.
 #' @param quiet Suppress progress messages.
-#' @return A `richcast_sdm`.
+#' @return A `richcast_sdm`. `range_cells` records how many grid cells carrying
+#'   climate the range covers -- the number of distinct training points
+#'   available, and the ceiling on what `nsample` can deliver.
 #' @seealso [project_sdm()], [run_hindcast_series()]
 #' @export
 fit_sdm <- function(db,
@@ -133,6 +141,13 @@ fit_sdm <- function(db,
     ))
   }
 
+  # --- How many grid cells the range actually occupies --------------------
+  # This bounds everything downstream. Presences are drawn WITH replacement,
+  # so a range covering k cells yields exactly k distinct climate vectors no
+  # matter how large nsample is: asking for 1000 samples from an 11-cell range
+  # returns each cell about 91 times, not 1000 independent observations.
+  range_cells <- count_range_cells(present, sp_vec, is_point)
+
   set.seed(seed)
   if (is_point) {
     # nrow(row) is 1 for a combined MULTIPOINT however many occurrences it
@@ -153,14 +168,24 @@ fit_sdm <- function(db,
   }
   say("[{sp_name}] Sampled {nrow(pres_df)} presence, {nrow(bg_df)} background")
 
-  # A range narrower than nsample cells cannot yield nsample distinct samples.
-  # terra warns about this per call, which buries the signal under noise across
-  # a batch; report it once per species, naming the species, and carry the
-  # realised counts in the returned object so they can be audited afterwards.
-  if (nrow(pres_df) < nsample && !quiet) {
-    cli::cli_alert_warning(
-      "[{sp_name}] Range yielded {nrow(pres_df)} of {nsample} presence samples; the range is small relative to the grid."
-    )
+  # Warn on the quantity that actually varies. `nrow(pres_df)` does not: with
+  # replace = TRUE, spatSample returns nsample rows for a 10-cell range and a
+  # 10000-cell one alike, so a guard on it never fires for polygon ranges and
+  # reads as reassurance that nothing checked. The distinct-cell count is what
+  # the model rests on.
+  # Occurrences are used as given rather than resampled, so the duplication is
+  # occurrences-per-cell, not nsample-per-cell. Saying "nsample samples repeat"
+  # for point data would describe a draw that never happened.
+  if (!quiet && range_cells < nrow(pres_df)) {
+    if (is_point) {
+      cli::cli_alert_warning(
+        "[{sp_name}] {nrow(pres_df)} occurrence{?s} fall in {range_cells} distinct grid cell{?s}; the model sees {range_cells} climate vector{?s}."
+      )
+    } else {
+      cli::cli_alert_warning(
+        "[{sp_name}] Range covers {range_cells} grid cell{?s}; {nsample} presence samples repeat each about {round(nsample / max(range_cells, 1))} time{?s}."
+      )
+    }
   }
 
   response <- c(rep(1, nrow(pres_df)), rep(0, nrow(bg_df)))
@@ -195,6 +220,7 @@ fit_sdm <- function(db,
       importance     = variable_importance(model),
       n_presence     = nrow(pres_df),
       n_background   = nrow(bg_df),
+      range_cells    = range_cells,
       study_extent   = as.vector(study_ext),
       present_cells  = binary$cells,
       present_range  = binary$polygon,
@@ -287,6 +313,7 @@ print.richcast_sdm <- function(x, ...) {
   cli::cli_text("{.cls richcast_sdm} {.strong {x$species}}")
   cli::cli_text("  {length(x$predictors)} predictors: {.val {x$predictors}}")
   cli::cli_text("  AUC {round(x$auc, 3)} | threshold {round(x$threshold, 3)} ({x$threshold_rule})")
+  cli::cli_text("  range covers {x$range_cells} grid cell{?s}")
   cli::cli_text("  present-day suitable cells: {x$present_cells}")
   invisible(x)
 }
@@ -361,6 +388,30 @@ score_raster <- function(past, model, threshold, land_geom) {
   suit <- terra::predict(past, model, type = "cloglog", na.rm = TRUE)
   suit <- terra::mask(suit, terra::vect(sf::st_sf(geometry = land_geom)))
   list(suit = suit, binary = binarise(suit, threshold))
+}
+
+#' Count the grid cells a range occupies
+#'
+#' The range measured in the units the model works in. Cells carrying no
+#' climate are excluded, because they cannot contribute a training point.
+#'
+#' Deliberately independent of `nsample`: sampling with replacement recovers
+#' the distinct cells only up to a coupon-collector shortfall, so counting the
+#' sample would make a fixed property of the range look like a function of how
+#' hard it was sampled.
+#' @noRd
+count_range_cells <- function(present, sp_vec, is_point) {
+  if (is_point) {
+    # Occurrences that share a cell give the model one climate vector, not
+    # several, so distinct cells is the honest count here too.
+    xy <- terra::crds(sp_vec)
+    if (nrow(xy) == 0) return(0L)
+    cells <- terra::cellFromXY(present[[1]], xy)
+    return(length(unique(stats::na.omit(cells))))
+  }
+  masked <- terra::mask(present[[1]], sp_vec)
+  n <- terra::global(!is.na(masked), "sum", na.rm = TRUE)[1, 1]
+  if (is.na(n)) 0L else as.integer(n)
 }
 
 #' Sample climate values from the cells covered by a polygon

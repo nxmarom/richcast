@@ -189,22 +189,94 @@ CV across 32 rodents from 28.6% to 5.5%, and it is now cheap, since dropping
 `modEvA::optiThresh` made the same 120-fit grid run in 4.1 minutes rather than
 23.5.
 
-### Withdrawn: the planned resolvability screen
+### Reinstated: the resolvability screen, on new evidence
 
-An earlier note here proposed omitting species whose ranges were too small to
-model stably, reporting them as `not resolvable`. That was based on
-measurements taken under `tss`, where 11 of 28 rodents produced a zero range on
-at least one draw and median CV was 112%.
+An earlier note here withdrew a planned screen for species too small to model
+stably. That withdrawal was correct on its evidence and wrong about its scope.
 
-Under `p10` the same 32 species give **zero** zero-range draws, a median CV of
-3.0%, and all 32 clearing any sensible size threshold. Every species that
-looked unresolvable was an artefact of the rule: *Arvicola amphibius* goes from
-4 cells to 84561, *Castor fiber* from 0 to 37180.
+The evidence was 32 Tian Shan rodents, where switching to `p10` removed every
+apparent problem: zero zero-range draws, median CV 3.0%, *Arvicola amphibius*
+going from 4 cells to 84561. What that dataset could not show is the case the
+screen was for. The narrowest of those 32 ranges, *Marmota baibacina*, covers
+**3161 grid cells**. No species in the set was small enough to fail.
 
-The screen is therefore not implemented. Species genuinely too small for the
-grid may still exist, but none of the evidence gathered so far demonstrates
-one, and a screen justified by superseded measurements would remove real data
-on false grounds.
+Eight Levantine ungulates at 0.5 degrees are:
+
+| species | range cells | 1000 presence samples give | worst-slice CV |
+|---|---|---|---|
+| *Dama mesopotamica* | **11** | each cell about 91 times | 115.9% |
+| *Gazella gazella* | **19** | each cell about 53 times | 194.4% |
+| *Capra ibex* | **79** | each cell about 13 times | 46.3% |
+| *Capra aegagrus* | 747 | 544 distinct cells | 7.9% |
+| *Sus scrofa* | 12549 | 966 distinct cells | 6.9% |
+
+Presences are drawn **with replacement**, so a range covering `k` cells gives
+the model `k` distinct climate vectors however large `nsample` is. *Dama* --
+which carries the *highest* AUC in the assemblage, 0.987, because separating 11
+points from 1000 is easy -- is fitted on 11.
+
+`fit_sdm()` now records `range_cells`, and `run_hindcast_series()` gains
+`min_cells` (default 100). Species below it are still fitted, projected and
+reported: they keep every row in `$species`, `$models`, `$ranges` and `$fits`,
+and are held out of the richness surfaces only, listed in a new
+`$resolvability` table with their range size and the reason. `min_cells = 0`
+restores the previous behaviour.
+
+The cutoff is measured, not picked. The ungulates leave a gap between 79 cells
+(unstable) and 747 (stable), so 23 more species were measured to fill it --
+rodents inside the same extent, same grid, five seeds each, 31 species from 11
+to 12549 cells. All 8 below 100 cells vary by more than 25% across seeds at
+their worst slice; 100 is the largest cutoff at which that holds without
+exception, and at 200 it fails. All 32 Tian Shan rodents clear it 31-fold, so
+the constraint that no rodent be excluded is met.
+
+Three findings that changed the design along the way:
+
+* **Replicate spread is the wrong diagnostic, and inverts.** Clipping one
+  donor range to compact blocks of fixed size, an 8-cell range returned
+  `2, 2, 2, 2, 2` cells across five seeds -- perfect agreement, worthless
+  answer. Sampling with replacement from 8 cells returns the same 8 cells
+  every time, so the interval narrows precisely where the estimate is least
+  trustworthy. The previous advice to screen on `cells_sd` is withdrawn.
+* **Study extent and suitable fraction move with the fitting buffer.** Forcing
+  background rings of 1 to 8 degrees on *Gazella gazella* moved its extent
+  14-fold and its suitable fraction from 19.8% to 3.6% -- on one unchanged
+  species, whose trajectory stayed equally unstable throughout. `range_cells`
+  does not move, because the buffer does not change the range.
+* **`p10` is less background-insensitive than claimed above.** The same sweep
+  moved *Gazella*'s cutoff from 0.573 to 0.217. The rule reads off the
+  presences, but the model generating those predictions is fitted against the
+  background, so the cutoff moves anyway. The section above overstates this;
+  what survives is that `p10` does not *tighten* toward emptiness as `tss`
+  does.
+
+The screen fixes resolution, not transferability. Above the cutoff, 8 of 23
+species still vary by more than 25% at their worst slice, and range size no
+longer predicts it -- the 200-400 cell band is worse than the 100-200 band.
+That residue concentrates in the deep slices (median across-seed CV 7.2% at
+2 ka against 22.8% at 60 ka), consistent with projection beyond the fitted
+climate. Clearing `min_cells` says the grid can resolve the species. It does
+not say the trajectory is sound.
+
+### Also on the way in
+
+* The small-range guard in `fit_sdm()` was dead code. `nrow(pres_df) < nsample`
+  can never be true for a polygon range, because `spatSample(replace = TRUE)`
+  returns `nsample` rows for an 11-cell range and a 12000-cell one alike -- so
+  a check that read as a safeguard had never fired. It now warns on
+  `range_cells`, which is the quantity that varies.
+* The Tian Shan vignette's diagnostics prose still described TSS-optimised
+  thresholds and `nsample = 100` against output showing `p10` and 1000, and
+  discussed four zero-range species that no longer exist under `p10`. Rewritten
+  against what the chunk actually prints.
+* `range_cells` means something slightly different for occurrence data than for
+  polygons: it counts cells holding a record, so it reflects survey effort as
+  well as range size. Sampling inside *Capra aegagrus*' range, 30 records report
+  30 cells against the polygon's 747, while the narrow-ranged taxa converge on
+  their polygon count within a few hundred records. The count is honest -- a
+  model given 30 points sees 30 climate vectors -- but an exclusion there should
+  be read as "too few distinct records", not "small range".
+  `?richcast-resolvability` has the numbers.
 
 ## Products
 
@@ -249,7 +321,8 @@ and a range filling its own study extent still aborts as before.
 
 ## To do
 
-* Implement the resolvability screen described above, once the cutoff is
-  grounded in the large-range measurements.
+* A transferability diagnostic, for the instability the resolvability screen
+  leaves behind: how far outside its fitted climate a projection has strayed,
+  per species per slice.
 * Plotting helpers for richness surfaces and per-species trajectories.
 * `pkgdown` site.

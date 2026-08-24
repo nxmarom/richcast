@@ -32,7 +32,13 @@ variable the present-day slice provides.}
 \item{nsample}{Number of presence and background points to draw. Measured
 across 32 rodent species under the default \code{p10} threshold, raising this
 from 100 to 1000 cut the worst-case coefficient of variation in modelled
-range size from 28.6\% to 5.5\%, at negligible cost.}
+range size from 28.6\% to 5.5\%, at negligible cost.
+
+It buys nothing once the range runs out of cells. Sampling is with
+replacement, so a range covering \code{k} grid cells yields \code{k} distinct
+climate vectors however large \code{nsample} is; beyond that point raising it
+only duplicates rows. The returned \code{range_cells} reports \code{k}, and
+\code{\link[=run_hindcast_series]{run_hindcast_series()}} screens on it.}
 
 \item{buffer}{Study-extent buffer around the range, as a proportion of the
 range's bounding-box diagonal.}
@@ -65,7 +71,9 @@ resolution.}
 \item{quiet}{Suppress progress messages.}
 }
 \value{
-A \code{richcast_sdm}.
+A \code{richcast_sdm}. \code{range_cells} records how many grid cells carrying
+climate the range covers -- the number of distinct training points
+available, and the ceiling on what \code{nsample} can deliver.
 }
 \description{
 Fits a MaxEnt-style model (via \pkg{maxnet}) for one species against
