@@ -236,6 +236,18 @@ res$richness[, c("period", "time", "mean_richness", "max_richness")]
 res$species
 ```
 
+These synthetic ranges are a few dozen grid cells each, so some fall below
+`min_cells` and are held out of the richness surfaces as not resolvable at this
+resolution. They keep their rows above; only the richness totals differ, and
+`$resolvability` says who and why:
+
+```{r}
+res$resolvability
+```
+
+Set `min_cells = 0` to switch the screen off. `?richcast-resolvability`
+explains what it is protecting against.
+
 `delta_from_previous` compares each slice to the one before it,
 `delta_from_present` to the present-day baseline. Both are computed after
 sorting time **numerically** -- sorting years as text puts 850 and 950 after

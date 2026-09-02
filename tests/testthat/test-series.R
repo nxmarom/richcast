@@ -56,7 +56,7 @@ test_that("run_hindcast_series orders time chronologically and lags correctly", 
     db, clim, times = times,
     focus = focus_box(c(0, 10, 0, 10), label = "test"),
     predictors = c("bio01", "bio12"), land = fake_land(),
-    resolution = 0.5, quiet = TRUE
+    resolution = 0.5, min_cells = 0, quiet = TRUE
   ))
   expect_s3_class(res, "richcast_series")
 
@@ -110,7 +110,7 @@ test_that("a failing species is skipped rather than killing the run", {
     db, clim, times = c(850, 950),
     focus = focus_box(c(0, 10, 0, 10)),
     predictors = c("bio01", "bio12"), land = fake_land(),
-    resolution = 0.5, on_error = "warn", quiet = TRUE
+    resolution = 0.5, on_error = "warn", min_cells = 0, quiet = TRUE
   ))
   expect_gt(nrow(res$models), 0)
   expect_true(all(c("auc", "threshold", "present_cells") %in% names(res$models)))

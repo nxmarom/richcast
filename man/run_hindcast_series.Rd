@@ -17,6 +17,7 @@ run_hindcast_series(
   baseline = "present",
   replicates = 1,
   conf = 0.9,
+  min_cells = 100,
   keep_surfaces = TRUE,
   on_error = c("warn", "stop"),
   quiet = FALSE,
@@ -58,6 +59,11 @@ as before. See details.}
 
 \item{conf}{Interval width for replicate summaries. \code{0.9} gives the 5th and
 95th percentiles across replicates.}
+
+\item{min_cells}{Smallest range, in grid cells, that can support a
+trajectory. Species below it are still fitted, projected and reported, but
+are left out of the richness surfaces and listed in \code{res$resolvability}.
+\code{0} disables the screen. See the resolvability section.}
 
 \item{keep_surfaces}{Retain the richness raster for every slice, so maps can
 be drawn afterwards. Stored wrapped, so the result still survives
@@ -102,14 +108,18 @@ Richness intervals are built by stacking replicate \emph{r} of every species int
 richness surface \emph{r}, then taking quantiles across replicates -- not by
 combining per-species intervals, which would be wrong for a sum.
 
-A wide replicate interval is not always the right output. Where a species
-occupies a handful of grid cells, whether its suitability clears the
-threshold at all depends on which cells the sample happened to hit, and the
-estimate is an artefact of the draw rather than a measurement with error
-around it. Widening the interval implies the quantity exists and is merely
-imprecise. A future release will omit such species by default, reporting
-them as \verb{not resolvable}; for now, screen on \code{present_cells} and on the
-\code{cells_sd} column these replicates produce.
+Do not read a \emph{narrow} interval as a stable answer. Replicates redraw the
+sample, so they measure sampling variability -- and a range small enough to
+be sampled exhaustively has none. Sampling 1000 points with replacement from
+an 8-cell range returns the same 8 cells on every seed, so the replicate
+spread collapses toward zero exactly where the estimate is least
+trustworthy. Measured on synthetic ranges clipped to a fixed number of
+cells, an 8-cell range reproduced its projected extent identically across
+five seeds at slices where a 512-cell range varied by 10\%. The interval was
+tight because there was nothing left to resample, not because the answer was
+firm.
+
+Screen on \code{range_cells} via \code{min_cells} instead; see the next section.
 
 Read these as \strong{precision, not accuracy}. They describe how much the answer
 moves when the sample is redrawn from the same range polygon under the same
@@ -117,6 +127,42 @@ reconstruction. They exclude the range polygon being wrong, the
 reconstruction being wrong, niche conservatism, and the choice of model --
 and in this pipeline the climate-product difference has been \emph{larger} than
 the replicate spread. Use \code{\link[=ensemble_series]{ensemble_series()}} for that layer.
+}
+
+\section{Resolvability}{
+
+
+Some species are too small for the climate grid to say anything about. A
+range covering \code{k} cells gives the model \code{k} distinct climate vectors --
+presences are drawn with replacement, so \code{nsample} cannot manufacture more
+-- and every projected extent is then a small integer whose value turns on
+which handful of cells the range happens to contain.
+
+\code{min_cells} names the floor. Species below it are \strong{still fitted, projected
+and reported}: they keep their rows in \verb{$species}, \verb{$models} and \verb{$ranges},
+so nothing becomes uninspectable. They are held out of the richness
+surfaces only, and listed in \verb{$resolvability} with their range size and the
+reason. Silent shrinkage of the assemblage is the failure this is meant to
+avoid, so the omission is always visible in the object and in \code{print()}.
+
+\code{range_cells} counts cells, not area, because the grid is what limits the
+inference: the same range is better resolved on a finer reconstruction. A
+cutoff in cells therefore only means something alongside the resolution it
+was measured at, and \verb{$resolvability} records the \code{min_cells} used.
+
+\code{min_cells} is also stored on the series itself, so a saved result carries
+the setting it was produced under. That matters because a series written
+before the screen existed, one written with the screen disabled, and one
+where every species passed all print as "nothing held out" -- and only the
+last is a clean bill of health. Its absence identifies the first case;
+\code{print()} reports which of the three applies.
+
+The default of 100 is the largest cutoff at which every species measured
+below it was demonstrably unstable: across 31 species spanning 11 to 12549
+cells, all 8 below 100 varied by more than 25\% across sampling seeds at
+their worst slice, and at 200 the rule stops holding. \code{min_cells = 0}
+disables the screen. \code{?richcast-resolvability} records the measurements,
+including what the screen does \emph{not} fix.
 }
 
 \section{Choosing a baseline}{

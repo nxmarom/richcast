@@ -27,14 +27,18 @@
 #' richness surface *r*, then taking quantiles across replicates -- not by
 #' combining per-species intervals, which would be wrong for a sum.
 #'
-#' A wide replicate interval is not always the right output. Where a species
-#' occupies a handful of grid cells, whether its suitability clears the
-#' threshold at all depends on which cells the sample happened to hit, and the
-#' estimate is an artefact of the draw rather than a measurement with error
-#' around it. Widening the interval implies the quantity exists and is merely
-#' imprecise. A future release will omit such species by default, reporting
-#' them as `not resolvable`; for now, screen on `present_cells` and on the
-#' `cells_sd` column these replicates produce.
+#' Do not read a *narrow* interval as a stable answer. Replicates redraw the
+#' sample, so they measure sampling variability -- and a range small enough to
+#' be sampled exhaustively has none. Sampling 1000 points with replacement from
+#' an 8-cell range returns the same 8 cells on every seed, so the replicate
+#' spread collapses toward zero exactly where the estimate is least
+#' trustworthy. Measured on synthetic ranges clipped to a fixed number of
+#' cells, an 8-cell range reproduced its projected extent identically across
+#' five seeds at slices where a 512-cell range varied by 10%. The interval was
+#' tight because there was nothing left to resample, not because the answer was
+#' firm.
+#'
+#' Screen on `range_cells` via `min_cells` instead; see the next section.
 #'
 #' Read these as **precision, not accuracy**. They describe how much the answer
 #' moves when the sample is redrawn from the same range polygon under the same
@@ -42,6 +46,40 @@
 #' reconstruction being wrong, niche conservatism, and the choice of model --
 #' and in this pipeline the climate-product difference has been *larger* than
 #' the replicate spread. Use [ensemble_series()] for that layer.
+#'
+#' @section Resolvability:
+#'
+#' Some species are too small for the climate grid to say anything about. A
+#' range covering `k` cells gives the model `k` distinct climate vectors --
+#' presences are drawn with replacement, so `nsample` cannot manufacture more
+#' -- and every projected extent is then a small integer whose value turns on
+#' which handful of cells the range happens to contain.
+#'
+#' `min_cells` names the floor. Species below it are **still fitted, projected
+#' and reported**: they keep their rows in `$species`, `$models` and `$ranges`,
+#' so nothing becomes uninspectable. They are held out of the richness
+#' surfaces only, and listed in `$resolvability` with their range size and the
+#' reason. Silent shrinkage of the assemblage is the failure this is meant to
+#' avoid, so the omission is always visible in the object and in `print()`.
+#'
+#' `range_cells` counts cells, not area, because the grid is what limits the
+#' inference: the same range is better resolved on a finer reconstruction. A
+#' cutoff in cells therefore only means something alongside the resolution it
+#' was measured at, and `$resolvability` records the `min_cells` used.
+#'
+#' `min_cells` is also stored on the series itself, so a saved result carries
+#' the setting it was produced under. That matters because a series written
+#' before the screen existed, one written with the screen disabled, and one
+#' where every species passed all print as "nothing held out" -- and only the
+#' last is a clean bill of health. Its absence identifies the first case;
+#' `print()` reports which of the three applies.
+#'
+#' The default of 100 is the largest cutoff at which every species measured
+#' below it was demonstrably unstable: across 31 species spanning 11 to 12549
+#' cells, all 8 below 100 varied by more than 25% across sampling seeds at
+#' their worst slice, and at 200 the rule stops holding. `min_cells = 0`
+#' disables the screen. `?richcast-resolvability` records the measurements,
+#' including what the screen does *not* fix.
 #'
 #' @section Choosing a baseline:
 #'
@@ -91,6 +129,10 @@
 #'   the slice the models were fitted on; a numeric year uses that slice
 #'   instead. Either way the baseline is projected through the same path as
 #'   the hindcast slices. See details.
+#' @param min_cells Smallest range, in grid cells, that can support a
+#'   trajectory. Species below it are still fitted, projected and reported, but
+#'   are left out of the richness surfaces and listed in `res$resolvability`.
+#'   `0` disables the screen. See the resolvability section.
 #' @param keep_surfaces Retain the richness raster for every slice, so maps can
 #'   be drawn afterwards. Stored wrapped, so the result still survives
 #'   `saveRDS()`. Set `FALSE` for very large foci where only the summary
@@ -116,6 +158,7 @@ run_hindcast_series <- function(db,
                                 baseline = "present",
                                 replicates = 1,
                                 conf = 0.9,
+                                min_cells = 100,
                                 keep_surfaces = TRUE,
                                 on_error = c("warn", "stop"),
                                 quiet = FALSE,
@@ -142,6 +185,9 @@ run_hindcast_series <- function(db,
     rc_abort("{.arg replicates} must be a single positive number.")
   }
   replicates <- as.integer(replicates)
+  if (!is.numeric(min_cells) || length(min_cells) != 1 || min_cells < 0) {
+    rc_abort("{.arg min_cells} must be a single non-negative number.")
+  }
   for (tt in as.character(times)) {
     ranges[[tt]] <- list()
     rep_ranges[[tt]] <- list()
@@ -234,12 +280,53 @@ run_hindcast_series <- function(db,
     rc_abort("No species could be modelled; nothing to summarise.")
   }
 
+  # --- Resolvability ------------------------------------------------------
+  # A range covering a handful of grid cells cannot support a trajectory. The
+  # model sees only as many distinct climate vectors as the range has cells,
+  # so whether any of them clears the threshold at a given slice turns on which
+  # cells the draw happened to hit. The resulting series is an artefact of the
+  # sample, not a measurement with error around it, and stacking it into
+  # richness moves the assemblage total on that basis.
+  #
+  # Such species are fitted, projected and reported exactly as before -- they
+  # stay in `$species`, `$models` and `$ranges`, so the underlying numbers
+  # remain inspectable -- and are held out of the richness surfaces only.
+  resolvability <- tibble::tibble(
+    species     = names(models),
+    range_cells = vapply(models, function(m) m$range_cells %||% NA_integer_,
+                         integer(1)),
+    min_cells   = as.integer(min_cells)
+  )
+  resolvability$resolvable <- resolvability$range_cells >= min_cells
+  resolvability$reason <- ifelse(
+    resolvability$resolvable, NA_character_,
+    sprintf("range covers %d cells, below min_cells = %d",
+            resolvability$range_cells, as.integer(min_cells))
+  )
+  keep <- resolvability$species[resolvability$resolvable]
+
+  if (length(keep) == 0) {
+    rc_abort(c(
+      "No species clears {.arg min_cells} = {min_cells}; richness would be empty.",
+      "i" = "Largest range covers {max(resolvability$range_cells)} cells.",
+      "i" = "Lower {.arg min_cells}, or prepare climate at a finer resolution."
+    ))
+  }
+  n_dropped <- nrow(resolvability) - length(keep)
+  if (n_dropped > 0 && !quiet) {
+    cli::cli_alert_warning(c(
+      "{n_dropped} species held out of richness as not resolvable at this grid: {.val {setdiff(resolvability$species, keep)}}."
+    ))
+    cli::cli_alert_info("See {.code $resolvability}; they remain in {.code $species} and {.code $models}.")
+  }
+
   # --- Richness per slice -------------------------------------------------
   # The surfaces are kept, not just their summaries: a mean over a region is a
   # poor substitute for seeing where in that region the species actually are.
   surfaces <- list()
   richness <- lapply(times, function(tt) {
     slice_ranges <- ranges[[as.character(tt)]]
+    slice_ranges <- slice_ranges[intersect(names(slice_ranges), keep)]
 
     # A slice where every projection failed produces an all-zero surface, which
     # is indistinguishable from a genuine absence of species. Say so: a missing
@@ -273,7 +360,8 @@ run_hindcast_series <- function(db,
     reps <- lapply(seq_len(replicates), function(r) {
       vapply(times, function(tt) {
         key <- as.character(tt)
-        per_sp <- lapply(rep_ranges[[key]], function(x) x[[r]])
+        avail <- rep_ranges[[key]][intersect(names(rep_ranges[[key]]), keep)]
+        per_sp <- lapply(avail, function(x) x[[r]])
         per_sp <- per_sp[!vapply(per_sp, is.null, logical(1))]
         rr <- richness_stack(per_sp, focus, resolution = resolution,
                              quiet = TRUE)
@@ -289,7 +377,7 @@ run_hindcast_series <- function(db,
   }
 
   # --- Present-day baseline ----------------------------------------------
-  present_ranges <- baselines[names(models)]
+  present_ranges <- baselines[intersect(names(models), keep)]
   present_r <- richness_stack(present_ranges, focus,
                               resolution = resolution, quiet = TRUE)
   if (keep_surfaces) surfaces[["present"]] <- terra::wrap(present_r)
@@ -323,7 +411,11 @@ run_hindcast_series <- function(db,
     threshold     = vapply(models, function(m) m$threshold, numeric(1)),
     n_presence    = vapply(models, function(m) m$n_presence, integer(1)),
     n_background  = vapply(models, function(m) m$n_background, integer(1)),
-    present_cells = vapply(models, function(m) m$present_cells, integer(1))
+    range_cells   = vapply(models, function(m) m$range_cells %||% NA_integer_,
+                           integer(1)),
+    present_cells = vapply(models, function(m) m$present_cells, integer(1)),
+    resolvable    = resolvability$resolvable[match(names(models),
+                                                   resolvability$species)]
   )
 
   structure(
@@ -331,6 +423,8 @@ run_hindcast_series <- function(db,
       richness = richness,
       species  = species_tbl,
       models   = models_tbl,
+      resolvability = resolvability,
+      min_cells = as.integer(min_cells),
       fits     = models,
       ranges   = ranges,
       surfaces = surfaces,
@@ -421,11 +515,41 @@ richness_grid <- function(series, times = NULL, drop_na = TRUE) {
   out[, c("x", "y", "time", "richness")]
 }
 
+#' Report whether the resolvability screen ran, and with what setting
+#'
+#' Four states are distinguishable and only one of them is a clean pass. A
+#' series written before the screen existed has no `min_cells` field at all;
+#' one written with `min_cells = 0` ran with the screen disabled; one with a
+#' positive setting either cleared everyone or held some species out. Row
+#' counts cannot tell these apart -- "nothing listed" is the printed form of
+#' both a clean pass and an absent test -- so the status is keyed on the
+#' presence of the field and reported unconditionally.
+#'
+#' @param x A `richcast_series`.
+#' @return A one-line character description, invisibly.
+#' @noRd
+screen_status <- function(x) {
+  if (is.null(x$min_cells)) {
+    return("resolvability: NOT RECORDED (series predates the screen)")
+  }
+  if (x$min_cells == 0) {
+    return("resolvability: disabled (min_cells = 0)")
+  }
+  n_out <- sum(!x$resolvability$resolvable)
+  sprintf("resolvability: ran at min_cells = %d, %d of %d held out",
+          x$min_cells, n_out, nrow(x$resolvability))
+}
+
 #' @export
 print.richcast_series <- function(x, ...) {
   cli::cli_text("{.cls richcast_series}")
   cli::cli_text("  {length(x$fits)} species x {length(x$times)} slices ({min(x$times)}-{max(x$times)} CE)")
   cli::cli_text("  focus: {x$focus$label}")
+  cli::cli_text("  {screen_status(x)}")
+  n_out <- sum(!x$resolvability$resolvable)
+  if (n_out > 0) {
+    cli::cli_text("  {n_out} species not resolvable at this grid, held out of richness ({.code $resolvability})")
+  }
   cli::cli_text("  {.code $richness} {.code $species} {.code $models} {.code $fits} {.code $ranges}")
   invisible(x)
 }

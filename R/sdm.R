@@ -33,6 +33,12 @@
 #'   across 32 rodent species under the default `p10` threshold, raising this
 #'   from 100 to 1000 cut the worst-case coefficient of variation in modelled
 #'   range size from 28.6% to 5.5%, at negligible cost.
+#'
+#'   It buys nothing once the range runs out of cells. Sampling is with
+#'   replacement, so a range covering `k` grid cells yields `k` distinct
+#'   climate vectors however large `nsample` is; beyond that point raising it
+#'   only duplicates rows. The returned `range_cells` reports `k`, and
+#'   [run_hindcast_series()] screens on it.
 #' @param buffer Study-extent buffer around the range, as a proportion of the
 #'   range's bounding-box diagonal.
 #' @param buffer_range Minimum and maximum buffer in degrees, clamping `buffer`.
@@ -51,12 +57,21 @@
 #'   buffer moved the median TSS threshold from 0.78 to 0.86 and the median
 #'   predicted range from 18 cells to 2. `"p10"` and `"mtp"` are referenced to
 #'   the presences instead, so they do not tighten as the background grows.
+#'
+#'   This is a sensitivity, not a defect in TSS as such. On a narrowly scoped
+#'   background the two families can agree closely -- an independent ensemble
+#'   over the same region found a TSS optimum of 0.287 against p10's 0.242,
+#'   correlating at 0.987. It bites here because richcast's study extent is
+#'   each species' full range plus a buffer, which for a widely distributed
+#'   species is continental.
 #' @param seed Random seed for point sampling.
 #' @param land Optional `sf`/`sfc` land outline used to mask predictions and
 #'   restrict the background to land. Defaults to Natural Earth at medium
 #'   resolution.
 #' @param quiet Suppress progress messages.
-#' @return A `richcast_sdm`.
+#' @return A `richcast_sdm`. `range_cells` records how many grid cells carrying
+#'   climate the range covers -- the number of distinct training points
+#'   available, and the ceiling on what `nsample` can deliver.
 #' @seealso [project_sdm()], [run_hindcast_series()]
 #' @export
 fit_sdm <- function(db,
@@ -105,17 +120,47 @@ fit_sdm <- function(db,
   study_vec <- terra::vect(study_ext, crs = "EPSG:4326")
 
   # --- Presence and background samples -----------------------------------
-  bg_vec <- terra::intersect(terra::erase(study_vec, sp_vec), land_vec)
+  # Erasing the range from the study extent only makes sense for a polygon.
+  # Points have no area to erase, and terra::erase() returns zero features
+  # rather than the untouched extent, so routing occurrences through the same
+  # call aborted every fit on "no background area left" -- a diagnosis exactly
+  # backwards from the truth, since a point range fills nothing.
+  #
+  # With occurrences the background is the study extent itself. That is the
+  # usual presence-background convention: the background describes what was
+  # available, and a cell containing an occurrence was available too.
+  bg_vec <- if (is_point) {
+    terra::intersect(study_vec, land_vec)
+  } else {
+    erased <- terra::erase(study_vec, sp_vec)
+    if (is.null(erased) || nrow(erased) == 0) {
+      rc_abort(c(
+        "[{sp_name}] No background area left after erasing the range.",
+        "i" = "The range fills the study extent; widen {.arg buffer}."
+      ))
+    }
+    terra::intersect(erased, land_vec)
+  }
   if (is.null(bg_vec) || nrow(bg_vec) == 0) {
     rc_abort(c(
-      "[{sp_name}] No background area left after erasing the range.",
-      "i" = "The range fills the study extent; widen {.arg buffer}."
+      "[{sp_name}] No background area left inside the study extent.",
+      "i" = "The extent may fall entirely off the {.arg land} outline."
     ))
   }
 
+  # --- How many grid cells the range actually occupies --------------------
+  # This bounds everything downstream. Presences are drawn WITH replacement,
+  # so a range covering k cells yields exactly k distinct climate vectors no
+  # matter how large nsample is: asking for 1000 samples from an 11-cell range
+  # returns each cell about 91 times, not 1000 independent observations.
+  range_cells <- count_range_cells(present, sp_vec, is_point)
+
   set.seed(seed)
   if (is_point) {
-    say("[{sp_name}] Using {nrow(row)} occurrence point{?s} directly")
+    # nrow(row) is 1 for a combined MULTIPOINT however many occurrences it
+    # holds, so it cannot report the count; the geometry has to be counted.
+    n_occ <- nrow(terra::geom(sp_vec))
+    say("[{sp_name}] Using {n_occ} occurrence point{?s} directly")
     pres_df <- stats::na.omit(terra::extract(present, sp_vec, ID = FALSE))
   } else {
     pres_df <- sample_cells(present, sp_vec, nsample)
@@ -130,14 +175,24 @@ fit_sdm <- function(db,
   }
   say("[{sp_name}] Sampled {nrow(pres_df)} presence, {nrow(bg_df)} background")
 
-  # A range narrower than nsample cells cannot yield nsample distinct samples.
-  # terra warns about this per call, which buries the signal under noise across
-  # a batch; report it once per species, naming the species, and carry the
-  # realised counts in the returned object so they can be audited afterwards.
-  if (nrow(pres_df) < nsample && !quiet) {
-    cli::cli_alert_warning(
-      "[{sp_name}] Range yielded {nrow(pres_df)} of {nsample} presence samples; the range is small relative to the grid."
-    )
+  # Warn on the quantity that actually varies. `nrow(pres_df)` does not: with
+  # replace = TRUE, spatSample returns nsample rows for a 10-cell range and a
+  # 10000-cell one alike, so a guard on it never fires for polygon ranges and
+  # reads as reassurance that nothing checked. The distinct-cell count is what
+  # the model rests on.
+  # Occurrences are used as given rather than resampled, so the duplication is
+  # occurrences-per-cell, not nsample-per-cell. Saying "nsample samples repeat"
+  # for point data would describe a draw that never happened.
+  if (!quiet && range_cells < nrow(pres_df)) {
+    if (is_point) {
+      cli::cli_alert_warning(
+        "[{sp_name}] {nrow(pres_df)} occurrence{?s} fall in {range_cells} distinct grid cell{?s}; the model sees {range_cells} climate vector{?s}."
+      )
+    } else {
+      cli::cli_alert_warning(
+        "[{sp_name}] Range covers {range_cells} grid cell{?s}; {nsample} presence samples repeat each about {round(nsample / max(range_cells, 1))} time{?s}."
+      )
+    }
   }
 
   response <- c(rep(1, nrow(pres_df)), rep(0, nrow(bg_df)))
@@ -172,6 +227,7 @@ fit_sdm <- function(db,
       importance     = variable_importance(model),
       n_presence     = nrow(pres_df),
       n_background   = nrow(bg_df),
+      range_cells    = range_cells,
       study_extent   = as.vector(study_ext),
       present_cells  = binary$cells,
       present_range  = binary$polygon,
@@ -264,6 +320,7 @@ print.richcast_sdm <- function(x, ...) {
   cli::cli_text("{.cls richcast_sdm} {.strong {x$species}}")
   cli::cli_text("  {length(x$predictors)} predictors: {.val {x$predictors}}")
   cli::cli_text("  AUC {round(x$auc, 3)} | threshold {round(x$threshold, 3)} ({x$threshold_rule})")
+  cli::cli_text("  range covers {x$range_cells} grid cell{?s}")
   cli::cli_text("  present-day suitable cells: {x$present_cells}")
   invisible(x)
 }
@@ -298,6 +355,21 @@ db_row <- function(db, species) {
     ))
   }
   if (length(hit) > 1) {
+    rows <- db[hit, ]
+    types <- as.character(sf::st_geometry_type(rows))
+
+    # A point source keeps one row per occurrence on purpose:
+    # build_taxon_db() skips the dissolve for points, so several rows for one
+    # species is the normal shape of occurrence data, not a defect to warn
+    # about. Taking the first would have fitted the model to a single
+    # occurrence, and the advice to rebuild with dissolve = TRUE could not have
+    # helped, since that path never runs for points.
+    if (all(types %in% c("POINT", "MULTIPOINT"))) {
+      out <- rows[1, ]
+      sf::st_geometry(out) <- sf::st_combine(sf::st_geometry(rows))
+      return(out)
+    }
+
     cli::cli_warn(c(
       "{.val {key}} has {length(hit)} rows; using the first.",
       "i" = "Rebuild with {.code build_taxon_db(dissolve = TRUE)} to union them."
@@ -323,6 +395,30 @@ score_raster <- function(past, model, threshold, land_geom) {
   suit <- terra::predict(past, model, type = "cloglog", na.rm = TRUE)
   suit <- terra::mask(suit, terra::vect(sf::st_sf(geometry = land_geom)))
   list(suit = suit, binary = binarise(suit, threshold))
+}
+
+#' Count the grid cells a range occupies
+#'
+#' The range measured in the units the model works in. Cells carrying no
+#' climate are excluded, because they cannot contribute a training point.
+#'
+#' Deliberately independent of `nsample`: sampling with replacement recovers
+#' the distinct cells only up to a coupon-collector shortfall, so counting the
+#' sample would make a fixed property of the range look like a function of how
+#' hard it was sampled.
+#' @noRd
+count_range_cells <- function(present, sp_vec, is_point) {
+  if (is_point) {
+    # Occurrences that share a cell give the model one climate vector, not
+    # several, so distinct cells is the honest count here too.
+    xy <- terra::crds(sp_vec)
+    if (nrow(xy) == 0) return(0L)
+    cells <- terra::cellFromXY(present[[1]], xy)
+    return(length(unique(stats::na.omit(cells))))
+  }
+  masked <- terra::mask(present[[1]], sp_vec)
+  n <- terra::global(!is.na(masked), "sum", na.rm = TRUE)[1, 1]
+  if (is.na(n)) 0L else as.integer(n)
 }
 
 #' Sample climate values from the cells covered by a polygon

@@ -123,7 +123,7 @@ db <- build_taxon_db(
   traits = rodent_traits
 )
 #> ℹ Reading 'data_0.shp'
-#> ✔ Reading 'data_0.shp' [1s]
+#> ✔ Reading 'data_0.shp' [1.2s]
 #> 
 #> ℹ Dissolving 3090 features into 2345 species ranges.
 #> ! Spherical union failed on invalid geometry; retrying in planar mode.
@@ -182,74 +182,77 @@ res
 res$models |>
   arrange(desc(auc)) |>
   print(n = Inf)
-#> # A tibble: 32 × 6
-#>    species                   auc threshold n_presence n_background present_cells
-#>    <chr>                   <dbl>     <dbl>      <int>        <int>         <int>
-#>  1 Sicista_subtilis        0.989     0.515       1000         1000         13826
-#>  2 Allocricetulus_eversma… 0.986     0.504       1000         1000          9005
-#>  3 Bandicota_bengalensis   0.985     0.515       1000         1000         13981
-#>  4 Spermophilus_pygmaeus   0.985     0.530       1000         1000          8757
-#>  5 Ellobius_talpinus       0.984     0.525       1000         1000         14814
-#>  6 Pteromys_volans         0.977     0.500       1000         1000         83269
-#>  7 Arvicola_amphibius      0.977     0.526       1000         1000         81214
-#>  8 Phodopus_sungorus       0.975     0.484       1000         1000          7480
-#>  9 Rattus_tanezumi         0.974     0.472        669         1000         28997
-#> 10 Myopus_schisticolor     0.972     0.487       1000         1000         67877
-#> 11 Lagurus_lagurus         0.971     0.493       1000         1000         27311
-#> 12 Microtus_agrestis       0.970     0.486       1000         1000         62648
-#> 13 Meriones_crassus        0.969     0.445       1000         1000         27248
-#> 14 Marmota_bobak           0.965     0.512       1000         1000          7388
-#> 15 Lasiopodomys_brandtii   0.962     0.510       1000         1000          5809
-#> 16 Marmota_himalayana      0.961     0.501       1000         1000         11471
-#> 17 Meriones_meridianus     0.959     0.467       1000         1000         30160
-#> 18 Rhombomys_opimus        0.959     0.449       1000         1000         25328
-#> 19 Castor_fiber            0.956     0.530       1000         1000         34926
-#> 20 Micromys_minutus        0.954     0.530       1000         1000         95981
-#> 21 Apodemus_agrarius       0.953     0.496       1000         1000         73122
-#> 22 Cricetulus_barabensis   0.951     0.447       1000         1000         25263
-#> 23 Apodemus_uralensis      0.945     0.494       1000         1000         46943
-#> 24 Marmota_sibirica        0.945     0.466       1000         1000          9004
-#> 25 Rattus_norvegicus       0.944     0.468       1000         1000        107498
-#> 26 Dryomys_nitedula        0.940     0.489       1000         1000         41263
-#> 27 Meriones_tamariscinus   0.934     0.460       1000         1000         21249
-#> 28 Microtus_socialis       0.929     0.492       1000         1000         20015
-#> 29 Meriones_unguiculatus   0.926     0.489       1000         1000         19993
-#> 30 Marmota_baibacina       0.919     0.490       1000         1000          6296
-#> 31 Mus_musculus            0.919     0.414       1000         1000        192304
-#> 32 Rattus_rattus           0.917     0.419       1000         1000        106539
+#> # A tibble: 32 × 8
+#>    species       auc threshold n_presence n_background range_cells present_cells
+#>    <chr>       <dbl>     <dbl>      <int>        <int>       <int>         <int>
+#>  1 Sicista_su… 0.989     0.515       1000         1000       12448         13826
+#>  2 Allocricet… 0.986     0.504       1000         1000        8431          9005
+#>  3 Bandicota_… 0.985     0.515       1000         1000       12841         13981
+#>  4 Spermophil… 0.985     0.530       1000         1000        8369          8757
+#>  5 Ellobius_t… 0.984     0.525       1000         1000       13946         14814
+#>  6 Pteromys_v… 0.977     0.500       1000         1000       82052         83269
+#>  7 Arvicola_a… 0.977     0.526       1000         1000       84632         81214
+#>  8 Phodopus_s… 0.975     0.484       1000         1000        5964          7480
+#>  9 Rattus_tan… 0.974     0.472        669         1000       27313         28997
+#> 10 Myopus_sch… 0.972     0.487       1000         1000       62823         67877
+#> 11 Lagurus_la… 0.971     0.493       1000         1000       21971         27311
+#> 12 Microtus_a… 0.970     0.486       1000         1000       59948         62648
+#> 13 Meriones_c… 0.969     0.445       1000         1000       26112         27248
+#> 14 Marmota_bo… 0.965     0.512       1000         1000        4058          7388
+#> 15 Lasiopodom… 0.962     0.510       1000         1000        3925          5809
+#> 16 Marmota_hi… 0.961     0.501       1000         1000        8840         11471
+#> 17 Meriones_m… 0.959     0.467       1000         1000       24773         30160
+#> 18 Rhombomys_… 0.959     0.449       1000         1000       18855         25328
+#> 19 Castor_fib… 0.956     0.530       1000         1000       20997         34926
+#> 20 Micromys_m… 0.954     0.530       1000         1000       85573         95981
+#> 21 Apodemus_a… 0.953     0.496       1000         1000       53594         73122
+#> 22 Cricetulus… 0.951     0.447       1000         1000       16491         25263
+#> 23 Apodemus_u… 0.945     0.494       1000         1000       34182         46943
+#> 24 Marmota_si… 0.945     0.466       1000         1000        7144          9004
+#> 25 Rattus_nor… 0.944     0.468       1000         1000       88015        107498
+#> 26 Dryomys_ni… 0.940     0.489       1000         1000       22682         41263
+#> 27 Meriones_t… 0.934     0.460       1000         1000       11408         21249
+#> 28 Microtus_s… 0.929     0.492       1000         1000        9066         20015
+#> 29 Meriones_u… 0.926     0.489       1000         1000       14854         19993
+#> 30 Marmota_ba… 0.919     0.490       1000         1000        3161          6296
+#> 31 Mus_muscul… 0.919     0.414       1000         1000      212214        192304
+#> 32 Rattus_rat… 0.917     0.419       1000         1000       77865        106539
+#> # ℹ 1 more variable: resolvable <lgl>
 ```
 
 AUC here is computed on the training data, so it measures fit rather than
 transferability, and should be read as a screen for models that failed rather
-than as evidence a model is good. Thresholds are TSS-optimised per species.
+than as evidence a model is good. Thresholds come from the default `p10` rule
+— the tenth percentile of predictions at training presences — so they cluster
+near 0.5 rather than being pushed up by the background, as a TSS-optimised
+cutoff would be.
 
-Two columns deserve a look before trusting any of the rest. `n_presence` is
-the number of presence samples actually drawn: `fit_sdm()` asks for 100, but a
-species whose range covers fewer than 100 cells at this resolution cannot
-supply them, and those models rest on a thinner base than the AUC suggests.
-`present_cells` is the modelled present-day range in cells — where it is zero,
-the species contributes nothing to richness at any slice and its deltas are
-all zero by construction.
+The column to look at before trusting the rest is `range_cells`: how many grid
+cells each species' range covers, and so how many distinct climate vectors the
+model had to learn from. Presences are drawn with replacement, so `nsample`
+cannot exceed it — asking for 1000 samples from a 20-cell range returns each
+cell about 50 times, not 1000 observations. `present_cells` is the modelled
+present-day range; where it is zero the species contributes nothing to richness
+at any slice and its deltas are all zero by construction.
 
 
 ``` r
 res$models |>
-  filter(n_presence < 100 | present_cells == 0) |>
-  arrange(present_cells, n_presence)
-#> # A tibble: 0 × 6
-#> # ℹ 6 variables: species <chr>, auc <dbl>, threshold <dbl>, n_presence <int>,
-#> #   n_background <int>, present_cells <int>
+  filter(!resolvable | present_cells == 0) |>
+  arrange(range_cells, present_cells)
+#> # A tibble: 0 × 8
+#> # ℹ 8 variables: species <chr>, auc <dbl>, threshold <dbl>, n_presence <int>,
+#> #   n_background <int>, range_cells <int>, present_cells <int>,
+#> #   resolvable <lgl>
 ```
 
-The four species with no present-day range are worth dwelling on, because
-they carry some of the *highest* AUCs in the table. That combination is
-diagnostic rather than contradictory: a model can separate its training
-presences from its background almost perfectly and still place its
-TSS-optimised threshold above anything the study region actually offers. For
-these taxa the Tian Shan sits at the edge of a range centred elsewhere, so the
-honest reading is "no suitable habitat here", not "good model". They are left
-in so the count is visible; filter them out before interpreting richness if
-you would rather they not dilute the mean.
+Nothing is listed. Every one of these 32 species covers at least 3161 cells at
+this resolution — the narrowest is *Marmota baibacina* — so all of them clear
+`min_cells` comfortably and none produces an empty present-day range. That is
+worth stating rather than passing over, because it is exactly why the
+resolvability screen was once thought unnecessary: a dataset of wide-ranging
+Eurasian rodents cannot exhibit the failure it guards against. See
+`?richcast-resolvability` for an assemblage that can.
 
 ## Richness over time
 
@@ -484,12 +487,122 @@ full standard deviation above the line for purely arithmetic reasons.
 
 
 ``` r
+# Referenced to each species' own median across the series.
 traj <- res$species |>
   group_by(species) |>
-  filter(stats::sd(delta_from_present, na.rm = TRUE) > 0) |>
-  mutate(z = delta_from_present / stats::sd(delta_from_present, na.rm = TRUE)) |>
-  ungroup()
+  mutate(ref = stats::median(cells),
+         pct = 100 * (cells - ref) / ref) |>
+  ungroup() |>
+  filter(ref > 0)
+
+# Net growth across the series: how much larger the youngest slice is than the
+# oldest. Measured end to end rather than as a mean, so a species that expanded
+# steadily and one that merely ended high are not scored alike.
+growth <- traj |>
+  group_by(species) |>
+  summarise(
+    growth_pct = 100 * (cells[which.max(time)] - cells[which.min(time)]) /
+      cells[which.min(time)],
+    .groups = "drop"
+  )
+
+# Reservoir hosts for plague in this region, from the literature rather than
+# from anything computed here.
+RESERVOIRS <- c("Marmota_baibacina", "Marmota_himalayana",
+                "Meriones_meridianus", "Lagurus_lagurus", "Rhombomys_opimus")
+
+cutoff <- stats::quantile(growth$growth_pct, 0.9, na.rm = TRUE)
+
+traj <- traj |>
+  left_join(growth, by = "species") |>
+  mutate(
+    top_grower = growth_pct >= cutoff,
+    reservoir  = species %in% RESERVOIRS,
+    # An asterisk on the panel strip marks a reservoir host, so the two
+    # encodings stay separate: colour is what the model found, the asterisk is
+    # what was known beforehand.
+    panel = paste0(species, ifelse(reservoir, " *", ""))
+  )
+
+growth |>
+  arrange(desc(growth_pct)) |>
+  mutate(reservoir = species %in% RESERVOIRS,
+         top_10pct = growth_pct >= cutoff) |>
+  print(n = Inf)
+#> # A tibble: 32 × 4
+#>    species                   growth_pct reservoir top_10pct
+#>    <chr>                          <dbl> <lgl>     <lgl>    
+#>  1 Marmota_baibacina            30.0    TRUE      TRUE     
+#>  2 Microtus_socialis            10.5    FALSE     TRUE     
+#>  3 Marmota_himalayana            8.53   TRUE      TRUE     
+#>  4 Marmota_sibirica              8.13   FALSE     TRUE     
+#>  5 Castor_fiber                  7.88   FALSE     FALSE    
+#>  6 Marmota_bobak                 7.56   FALSE     FALSE    
+#>  7 Lagurus_lagurus               6.88   TRUE      FALSE    
+#>  8 Bandicota_bengalensis         6.28   FALSE     FALSE    
+#>  9 Microtus_agrestis             6.00   FALSE     FALSE    
+#> 10 Lasiopodomys_brandtii         5.78   FALSE     FALSE    
+#> 11 Spermophilus_pygmaeus         4.79   FALSE     FALSE    
+#> 12 Meriones_tamariscinus         4.23   FALSE     FALSE    
+#> 13 Rhombomys_opimus              4.07   TRUE      FALSE    
+#> 14 Myopus_schisticolor           3.77   FALSE     FALSE    
+#> 15 Meriones_crassus              3.53   FALSE     FALSE    
+#> 16 Apodemus_uralensis            2.13   FALSE     FALSE    
+#> 17 Cricetulus_barabensis         2.04   FALSE     FALSE    
+#> 18 Meriones_meridianus           1.06   TRUE      FALSE    
+#> 19 Arvicola_amphibius            0.408  FALSE     FALSE    
+#> 20 Pteromys_volans               0.0397 FALSE     FALSE    
+#> 21 Rattus_norvegicus            -0.0996 FALSE     FALSE    
+#> 22 Sicista_subtilis             -0.238  FALSE     FALSE    
+#> 23 Phodopus_sungorus            -0.448  FALSE     FALSE    
+#> 24 Meriones_unguiculatus        -0.753  FALSE     FALSE    
+#> 25 Mus_musculus                 -0.912  FALSE     FALSE    
+#> 26 Rattus_rattus                -1.75   FALSE     FALSE    
+#> 27 Apodemus_agrarius            -1.95   FALSE     FALSE    
+#> 28 Micromys_minutus             -3.06   FALSE     FALSE    
+#> 29 Dryomys_nitedula             -3.43   FALSE     FALSE    
+#> 30 Rattus_tanezumi              -5.60   FALSE     FALSE    
+#> 31 Allocricetulus_eversmanni   -10.6    FALSE     FALSE    
+#> 32 Ellobius_talpinus           -14.8    FALSE     FALSE
 ```
+
+Two annotations, kept deliberately independent. Colour marks the upper tenth
+of species by net growth from 850 to 1850 -- a property of the model output.
+The asterisk marks species independently known as plague reservoirs -- a
+property of the literature. Whether the two coincide is then something the
+figure can show rather than something its construction has assumed.
+
+Two choices here are worth spelling out.
+
+**Percent change, not standard deviations.** An earlier version divided each
+delta by the standard deviation of that species' own deltas across the eleven
+slices. That is a bad denominator: it measures how much a trajectory *wanders*,
+not how uncertain any point on it is, so it shrinks as a species becomes more
+stable and awards its largest scores to the species that changed least.
+*Castor fiber* read as four SD below present when its range was in fact 6%
+smaller. For a denominator that means something, see the replicate section
+below.
+
+**Referenced to each species' own median, not to a particular slice.** Three
+candidates were considered and the first two rejected on evidence.
+
+The *present-day slice* is in-sample: models are fitted on that raster, and
+`p10` sets the threshold so about 90% of training presences pass on it, while
+every hindcast slice is an extrapolation. Both push projections downward
+against it. Across six species the 1850 range averaged 96% of present and five
+of six never exceeded present at any slice -- a real offset of a few percent,
+but an artefact of the comparison rather than a signal.
+
+The *1850 slice* removes that asymmetry, since both sides are then
+out-of-sample, but it is an endpoint extreme in its own right: over the Tian
+Shan it is the warmest of the eleven centuries (bio01 and bio05 both rank
+11/11) and the driest (bio12, bio15 and bio16 all rank 1/11). Referencing to it
+compares every century against the most anomalous one.
+
+The *median* is subject to neither. Zero means "typical for this species across
+the millennium", so the axis reads as departure from a species' own norm. The
+cost is that zero is internal to the series and no longer says anything about
+the present day; `res$species` retains `delta_from_present` for that.
 
 Time runs down the vertical axis, as in a stratigraphic column, so a century
 reads as a level rather than a position along a line. Each panel is one
@@ -497,18 +610,48 @@ species; the grey vertical rule is no change from present, the red horizontal
 rule is 1350 CE. Steps rather than lines, because a centennial slice is an
 interval, not an instant.
 
+The axis is set from the data rather than to a round number: the largest
+fluctuation in the series, plus five percentage points of margin. That keeps
+the scale tight enough to read while guaranteeing nothing is pushed off the
+panel -- a fixed window would have hidden whichever species happened to move
+most, which is exactly the species worth seeing.
+
 
 ``` r
-ggplot(traj, aes(y = time, x = z, group = species)) +
+traj_lim <- ceiling(max(abs(traj$pct), na.rm = TRUE)) + 5
+
+traj |>
+  summarise(
+    points        = dplyr::n(),
+    worst_species = species[which.max(abs(pct))],
+    worst_pct     = round(max(abs(pct)), 1),
+    axis_limit    = traj_lim
+  )
+#> # A tibble: 1 × 4
+#>   points worst_species worst_pct axis_limit
+#>    <int> <chr>             <dbl>      <dbl>
+#> 1    352 Marmota_bobak      33.2         39
+```
+
+
+``` r
+ggplot(traj, aes(y = time, x = pct, group = species)) +
   geom_vline(xintercept = 0, colour = "gray") +
   geom_hline(yintercept = 1350, colour = "red", linetype = "dashed") +
-  geom_step(orientation = "y") +
+  geom_step(aes(colour = top_grower), orientation = "y") +
+  scale_colour_manual(
+    values = c(`TRUE` = "#b2182b", `FALSE` = "grey25"),
+    labels = c(`TRUE` = "upper 10% by net growth", `FALSE` = "other"),
+    name = NULL
+  ) +
   scale_y_continuous(breaks = seq(850, 1850, by = 200)) +
-  facet_wrap(~species, ncol = 5) +
-  labs(x = "Change from present (SD units)", y = "Year CE",
+  facet_wrap(~panel, ncol = 5) +
+  coord_cartesian(xlim = c(-traj_lim, traj_lim)) +
+  labs(x = "Change from species median (%)", y = "Year CE",
        title = "Range-size trajectories, per species",
-       subtitle = "Grey line: same extent as present") +
-  theme_bw()
+       subtitle = "Grey line: species millennial median. Asterisk: known plague reservoir") +
+  theme_bw() +
+  theme(legend.position = "bottom")
 ```
 
 ![plot of chunk trajectories](tianshan-trajectories-1.png)
@@ -519,12 +662,13 @@ A single species at readable size, with every slice labelled:
 ``` r
 traj |>
   filter(species == "Marmota_baibacina") |>
-  ggplot(aes(y = time, x = z)) +
+  ggplot(aes(y = time, x = pct)) +
   geom_vline(xintercept = 0, colour = "gray") +
   geom_hline(yintercept = 1350, colour = "red", linetype = "dashed") +
   geom_step(orientation = "y", linewidth = 1.3) +
   scale_y_continuous(breaks = seq(850, 1850, by = 100)) +
-  labs(x = "Change from present (SD units)", y = "Year CE") +
+  coord_cartesian(xlim = c(-traj_lim, traj_lim)) +
+  labs(x = "Change from species median (%)", y = "Year CE") +
   ggtitle("Marmota_baibacina") +
   theme_bw()
 ```
@@ -630,6 +774,67 @@ species*.
 
 Running both is cheap once the slices are on disk, and the spread between them
 is a more honest error bar than either run's internal statistics.
+
+## A standardised axis, done properly
+
+Percent change is interpretable but not comparable across species with very
+different range sizes. If a standardised axis is wanted, the denominator has to
+be *measurement uncertainty*, which `replicates` supplies: each replicate
+redraws the presence and background samples and re-optimises the threshold, so
+the spread across replicates is how much the answer moves when the sample
+moves.
+
+Replicating all 32 species is expensive, so this is one species. `cells_sd` is
+the standard deviation of that species' suitable-cell count across replicates.
+
+
+``` r
+one <- run_hindcast_series(
+  db |> filter_taxa(species == "Marmota_baibacina", quiet = TRUE),
+  clim,
+  times      = TIMES,
+  focus      = tianshan,
+  predictors = VARS,
+  resolution = 0.1,
+  replicates = 10,
+  quiet      = TRUE
+)
+
+one$species |>
+  transmute(
+    time,
+    cells,
+    pct      = round(100 * delta_from_present / present_cells, 1),
+    cells_sd = round(cells_sd, 1),
+    z_meas   = round(delta_from_present / cells_sd, 1)
+  ) |>
+  print(n = Inf)
+#> # A tibble: 11 × 5
+#>     time cells   pct cells_sd z_meas
+#>    <dbl> <dbl> <dbl>    <dbl>  <dbl>
+#>  1   850 6908.   9.7     651.    0.9
+#>  2   950 7567   20.2     468.    2.7
+#>  3  1050 7105   12.8     569.    1.4
+#>  4  1150 6818    8.3     430.    1.2
+#>  5  1250 6558    4.2     436.    0.6
+#>  6  1350 6742.   7.1     551.    0.8
+#>  7  1450 7382   17.2     541.    2  
+#>  8  1550 8248.  31       613.    3.2
+#>  9  1650 8444.  34.1     474.    4.5
+#> 10  1750 7234.  14.9     406.    2.3
+#> 11  1850 9888.  57       661.    5.4
+```
+
+The two standardised columns answer different questions. `pct` is the size of
+the change; `z_meas` is whether the change exceeds what redrawing the sample
+would produce anyway. A change of a few percent that is many measurement SDs
+wide is a real shift in a tightly estimated range; the same few percent inside
+one measurement SD is not distinguishable from sampling noise.
+
+Contrast this with dividing by the spread of the deltas themselves, which is
+what the figures above once did. That denominator gets *smaller* the more
+stable a trajectory is, so it awards its largest scores to the species that
+changed least -- the opposite of what a standardised effect should do.
 
 ## Chronological uncertainty
 
