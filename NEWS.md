@@ -157,6 +157,19 @@ to 0.86 and the median modelled range from 18 cells to 2. Three separate
 background definitions were tried and every one made things worse -- the
 background was never the problem, the rule was.
 
+That last sentence needs a qualification, from an independent check on a
+different pipeline. A tidysdm BART ensemble over the same region, with a
+tightly scoped background, put its TSS optimum at 0.287 against p10's 0.242 --
+close enough that the two series correlated at 0.987 and gave an identical
+headline count, with p10 simply rescaling area by 1.4x. So `tss` is not wrong
+in itself; it is *background-sensitive*, and richcast makes that bite because
+its study extents are each species' full range plus a buffer, which for a
+Eurasian species is continental. Where the background is narrow the two rules
+can agree closely. Where it is continental, TSS optima land at 0.7-0.94 and
+strip ranges to single digits.
+
+`p10` is the safer default precisely because it is indifferent to that choice.
+
 `p10` takes the tenth percentile of predictions at training presences. Being
 referenced to the presences, it cannot be tightened by a wider background.
 `mtp` (minimum training presence) is also available, and a fixed numeric

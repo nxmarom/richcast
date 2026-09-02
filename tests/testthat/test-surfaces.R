@@ -264,3 +264,58 @@ test_that("ensemble_series summarises spread across members", {
   expect_error(ensemble_series(list(mk(c1))), "at least two")
   expect_error(ensemble_series(list(mk(c1), mk(c2))), "must be named")
 })
+
+# --- Screen provenance ------------------------------------------------------
+# "Nothing held out" is the printed form of three different situations, only
+# one of which is a clean pass. The setting has to travel with the result.
+
+test_that("min_cells is recorded on the series", {
+  skip_if_not_installed("maxnet")
+  res <- make_series()
+  expect_true("min_cells" %in% names(res))
+  expect_type(res$min_cells, "integer")
+  # The setting travels with the result, including when the screen is off --
+  # "disabled" and "never recorded" are different claims about the data.
+  expect_equal(res$min_cells, 0L)
+})
+
+test_that("the screen never emits a shapeless resolvability table", {
+  skip_if_not_installed("maxnet")
+  res <- make_series()
+  expect_s3_class(res$resolvability, "tbl_df")
+  expect_true(all(c("species", "range_cells", "min_cells", "resolvable",
+                    "reason") %in% names(res$resolvability)))
+  # One row per modelled species, so a 0x0 is unreachable from current code.
+  expect_equal(nrow(res$resolvability), nrow(res$models))
+})
+
+test_that("screen status distinguishes absent, disabled and clean-pass", {
+  skip_if_not_installed("maxnet")
+  # make_series() disables the screen, so build one that runs it.
+  dir <- withr::local_tempdir()
+  clim <- structured_climate(dir, times = c(850, 950))
+  res <- suppressWarnings(run_hindcast_series(
+    two_species_db(), clim, times = c(850, 950),
+    focus = focus_box(c(0, 10, 0, 10)),
+    predictors = c("bio01", "bio12"), land = fake_land(),
+    resolution = 0.5, min_cells = 1, quiet = TRUE
+  ))
+
+  expect_match(richcast:::screen_status(res), "ran at min_cells")
+
+  # A series from a build predating the screen has no field at all. That is
+  # the dangerous case: it reads as a clean pass if you count rows.
+  old <- res
+  old$min_cells <- NULL
+  expect_match(richcast:::screen_status(old), "NOT RECORDED")
+
+  disabled <- res
+  disabled$min_cells <- 0L
+  expect_match(richcast:::screen_status(disabled), "disabled")
+})
+
+test_that("print reports the screen unconditionally", {
+  skip_if_not_installed("maxnet")
+  res <- make_series()
+  expect_message(print(res), "resolvability")
+})

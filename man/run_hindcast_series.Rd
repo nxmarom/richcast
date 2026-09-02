@@ -150,6 +150,13 @@ inference: the same range is better resolved on a finer reconstruction. A
 cutoff in cells therefore only means something alongside the resolution it
 was measured at, and \verb{$resolvability} records the \code{min_cells} used.
 
+\code{min_cells} is also stored on the series itself, so a saved result carries
+the setting it was produced under. That matters because a series written
+before the screen existed, one written with the screen disabled, and one
+where every species passed all print as "nothing held out" -- and only the
+last is a clean bill of health. Its absence identifies the first case;
+\code{print()} reports which of the three applies.
+
 The default of 100 is the largest cutoff at which every species measured
 below it was demonstrably unstable: across 31 species spanning 11 to 12549
 cells, all 8 below 100 varied by more than 25\% across sampling seeds at

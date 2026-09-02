@@ -57,6 +57,13 @@
 #'   buffer moved the median TSS threshold from 0.78 to 0.86 and the median
 #'   predicted range from 18 cells to 2. `"p10"` and `"mtp"` are referenced to
 #'   the presences instead, so they do not tighten as the background grows.
+#'
+#'   This is a sensitivity, not a defect in TSS as such. On a narrowly scoped
+#'   background the two families can agree closely -- an independent ensemble
+#'   over the same region found a TSS optimum of 0.287 against p10's 0.242,
+#'   correlating at 0.987. It bites here because richcast's study extent is
+#'   each species' full range plus a buffer, which for a widely distributed
+#'   species is continental.
 #' @param seed Random seed for point sampling.
 #' @param land Optional `sf`/`sfc` land outline used to mask predictions and
 #'   restrict the background to land. Defaults to Natural Earth at medium

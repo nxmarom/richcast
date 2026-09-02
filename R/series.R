@@ -67,6 +67,13 @@
 #' cutoff in cells therefore only means something alongside the resolution it
 #' was measured at, and `$resolvability` records the `min_cells` used.
 #'
+#' `min_cells` is also stored on the series itself, so a saved result carries
+#' the setting it was produced under. That matters because a series written
+#' before the screen existed, one written with the screen disabled, and one
+#' where every species passed all print as "nothing held out" -- and only the
+#' last is a clean bill of health. Its absence identifies the first case;
+#' `print()` reports which of the three applies.
+#'
 #' The default of 100 is the largest cutoff at which every species measured
 #' below it was demonstrably unstable: across 31 species spanning 11 to 12549
 #' cells, all 8 below 100 varied by more than 25% across sampling seeds at
@@ -417,6 +424,7 @@ run_hindcast_series <- function(db,
       species  = species_tbl,
       models   = models_tbl,
       resolvability = resolvability,
+      min_cells = as.integer(min_cells),
       fits     = models,
       ranges   = ranges,
       surfaces = surfaces,
@@ -507,11 +515,37 @@ richness_grid <- function(series, times = NULL, drop_na = TRUE) {
   out[, c("x", "y", "time", "richness")]
 }
 
+#' Report whether the resolvability screen ran, and with what setting
+#'
+#' Four states are distinguishable and only one of them is a clean pass. A
+#' series written before the screen existed has no `min_cells` field at all;
+#' one written with `min_cells = 0` ran with the screen disabled; one with a
+#' positive setting either cleared everyone or held some species out. Row
+#' counts cannot tell these apart -- "nothing listed" is the printed form of
+#' both a clean pass and an absent test -- so the status is keyed on the
+#' presence of the field and reported unconditionally.
+#'
+#' @param x A `richcast_series`.
+#' @return A one-line character description, invisibly.
+#' @noRd
+screen_status <- function(x) {
+  if (is.null(x$min_cells)) {
+    return("resolvability: NOT RECORDED (series predates the screen)")
+  }
+  if (x$min_cells == 0) {
+    return("resolvability: disabled (min_cells = 0)")
+  }
+  n_out <- sum(!x$resolvability$resolvable)
+  sprintf("resolvability: ran at min_cells = %d, %d of %d held out",
+          x$min_cells, n_out, nrow(x$resolvability))
+}
+
 #' @export
 print.richcast_series <- function(x, ...) {
   cli::cli_text("{.cls richcast_series}")
   cli::cli_text("  {length(x$fits)} species x {length(x$times)} slices ({min(x$times)}-{max(x$times)} CE)")
   cli::cli_text("  focus: {x$focus$label}")
+  cli::cli_text("  {screen_status(x)}")
   n_out <- sum(!x$resolvability$resolvable)
   if (n_out > 0) {
     cli::cli_text("  {n_out} species not resolvable at this grid, held out of richness ({.code $resolvability})")

@@ -60,7 +60,14 @@ background, so a wider background makes discrimination easier and pushes
 the cutoff up: measured across eight ungulates, widening the background
 buffer moved the median TSS threshold from 0.78 to 0.86 and the median
 predicted range from 18 cells to 2. \code{"p10"} and \code{"mtp"} are referenced to
-the presences instead, so they do not tighten as the background grows.}
+the presences instead, so they do not tighten as the background grows.
+
+This is a sensitivity, not a defect in TSS as such. On a narrowly scoped
+background the two families can agree closely -- an independent ensemble
+over the same region found a TSS optimum of 0.287 against p10's 0.242,
+correlating at 0.987. It bites here because richcast's study extent is
+each species' full range plus a buffer, which for a widely distributed
+species is continental.}
 
 \item{seed}{Random seed for point sampling.}
 
