@@ -349,12 +349,87 @@ and if most slices were smaller than today, every taxon then appears to sit a
 full standard deviation above the line for purely arithmetic reasons.
 
 ```{r traj-data}
+# Referenced to each species' own median across the series.
 traj <- res$species |>
   group_by(species) |>
-  filter(stats::sd(delta_from_present, na.rm = TRUE) > 0) |>
-  mutate(z = delta_from_present / stats::sd(delta_from_present, na.rm = TRUE)) |>
-  ungroup()
+  mutate(ref = stats::median(cells),
+         pct = 100 * (cells - ref) / ref) |>
+  ungroup() |>
+  filter(ref > 0)
+
+# Net growth across the series: how much larger the youngest slice is than the
+# oldest. Measured end to end rather than as a mean, so a species that expanded
+# steadily and one that merely ended high are not scored alike.
+growth <- traj |>
+  group_by(species) |>
+  summarise(
+    growth_pct = 100 * (cells[which.max(time)] - cells[which.min(time)]) /
+      cells[which.min(time)],
+    .groups = "drop"
+  )
+
+# Reservoir hosts for plague in this region, from the literature rather than
+# from anything computed here.
+RESERVOIRS <- c("Marmota_baibacina", "Marmota_himalayana",
+                "Meriones_meridianus", "Lagurus_lagurus", "Rhombomys_opimus")
+
+cutoff <- stats::quantile(growth$growth_pct, 0.9, na.rm = TRUE)
+
+traj <- traj |>
+  left_join(growth, by = "species") |>
+  mutate(
+    top_grower = growth_pct >= cutoff,
+    reservoir  = species %in% RESERVOIRS,
+    # An asterisk on the panel strip marks a reservoir host, so the two
+    # encodings stay separate: colour is what the model found, the asterisk is
+    # what was known beforehand.
+    panel = paste0(species, ifelse(reservoir, " *", ""))
+  )
+
+growth |>
+  arrange(desc(growth_pct)) |>
+  mutate(reservoir = species %in% RESERVOIRS,
+         top_10pct = growth_pct >= cutoff) |>
+  print(n = Inf)
 ```
+
+Two annotations, kept deliberately independent. Colour marks the upper tenth
+of species by net growth from 850 to 1850 -- a property of the model output.
+The asterisk marks species independently known as plague reservoirs -- a
+property of the literature. Whether the two coincide is then something the
+figure can show rather than something its construction has assumed.
+
+Two choices here are worth spelling out.
+
+**Percent change, not standard deviations.** An earlier version divided each
+delta by the standard deviation of that species' own deltas across the eleven
+slices. That is a bad denominator: it measures how much a trajectory *wanders*,
+not how uncertain any point on it is, so it shrinks as a species becomes more
+stable and awards its largest scores to the species that changed least.
+*Castor fiber* read as four SD below present when its range was in fact 6%
+smaller. For a denominator that means something, see the replicate section
+below.
+
+**Referenced to each species' own median, not to a particular slice.** Three
+candidates were considered and the first two rejected on evidence.
+
+The *present-day slice* is in-sample: models are fitted on that raster, and
+`p10` sets the threshold so about 90% of training presences pass on it, while
+every hindcast slice is an extrapolation. Both push projections downward
+against it. Across six species the 1850 range averaged 96% of present and five
+of six never exceeded present at any slice -- a real offset of a few percent,
+but an artefact of the comparison rather than a signal.
+
+The *1850 slice* removes that asymmetry, since both sides are then
+out-of-sample, but it is an endpoint extreme in its own right: over the Tian
+Shan it is the warmest of the eleven centuries (bio01 and bio05 both rank
+11/11) and the driest (bio12, bio15 and bio16 all rank 1/11). Referencing to it
+compares every century against the most anomalous one.
+
+The *median* is subject to neither. Zero means "typical for this species across
+the millennium", so the axis reads as departure from a species' own norm. The
+cost is that zero is internal to the series and no longer says anything about
+the present day; `res$species` retains `delta_from_present` for that.
 
 Time runs down the vertical axis, as in a stratigraphic column, so a century
 reads as a level rather than a position along a line. Each panel is one
@@ -362,17 +437,42 @@ species; the grey vertical rule is no change from present, the red horizontal
 rule is 1350 CE. Steps rather than lines, because a centennial slice is an
 interval, not an instant.
 
+The axis is set from the data rather than to a round number: the largest
+fluctuation in the series, plus five percentage points of margin. That keeps
+the scale tight enough to read while guaranteeing nothing is pushed off the
+panel -- a fixed window would have hidden whichever species happened to move
+most, which is exactly the species worth seeing.
+
+```{r traj-limits}
+traj_lim <- ceiling(max(abs(traj$pct), na.rm = TRUE)) + 5
+
+traj |>
+  summarise(
+    points        = dplyr::n(),
+    worst_species = species[which.max(abs(pct))],
+    worst_pct     = round(max(abs(pct)), 1),
+    axis_limit    = traj_lim
+  )
+```
+
 ```{r trajectories, fig.width = 9, fig.height = 10}
-ggplot(traj, aes(y = time, x = z, group = species)) +
+ggplot(traj, aes(y = time, x = pct, group = species)) +
   geom_vline(xintercept = 0, colour = "gray") +
   geom_hline(yintercept = 1350, colour = "red", linetype = "dashed") +
-  geom_step(orientation = "y") +
+  geom_step(aes(colour = top_grower), orientation = "y") +
+  scale_colour_manual(
+    values = c(`TRUE` = "#b2182b", `FALSE` = "grey25"),
+    labels = c(`TRUE` = "upper 10% by net growth", `FALSE` = "other"),
+    name = NULL
+  ) +
   scale_y_continuous(breaks = seq(850, 1850, by = 200)) +
-  facet_wrap(~species, ncol = 5) +
-  labs(x = "Change from present (SD units)", y = "Year CE",
+  facet_wrap(~panel, ncol = 5) +
+  coord_cartesian(xlim = c(-traj_lim, traj_lim)) +
+  labs(x = "Change from species median (%)", y = "Year CE",
        title = "Range-size trajectories, per species",
-       subtitle = "Grey line: same extent as present") +
-  theme_bw()
+       subtitle = "Grey line: species millennial median. Asterisk: known plague reservoir") +
+  theme_bw() +
+  theme(legend.position = "bottom")
 ```
 
 A single species at readable size, with every slice labelled:
@@ -380,12 +480,13 @@ A single species at readable size, with every slice labelled:
 ```{r focus-species, fig.width = 5, fig.height = 5}
 traj |>
   filter(species == "Marmota_baibacina") |>
-  ggplot(aes(y = time, x = z)) +
+  ggplot(aes(y = time, x = pct)) +
   geom_vline(xintercept = 0, colour = "gray") +
   geom_hline(yintercept = 1350, colour = "red", linetype = "dashed") +
   geom_step(orientation = "y", linewidth = 1.3) +
   scale_y_continuous(breaks = seq(850, 1850, by = 100)) +
-  labs(x = "Change from present (SD units)", y = "Year CE") +
+  coord_cartesian(xlim = c(-traj_lim, traj_lim)) +
+  labs(x = "Change from species median (%)", y = "Year CE") +
   ggtitle("Marmota_baibacina") +
   theme_bw()
 ```
@@ -463,6 +564,52 @@ species*.
 
 Running both is cheap once the slices are on disk, and the spread between them
 is a more honest error bar than either run's internal statistics.
+
+## A standardised axis, done properly
+
+Percent change is interpretable but not comparable across species with very
+different range sizes. If a standardised axis is wanted, the denominator has to
+be *measurement uncertainty*, which `replicates` supplies: each replicate
+redraws the presence and background samples and re-optimises the threshold, so
+the spread across replicates is how much the answer moves when the sample
+moves.
+
+Replicating all 32 species is expensive, so this is one species. `cells_sd` is
+the standard deviation of that species' suitable-cell count across replicates.
+
+```{r replicate-demo}
+one <- run_hindcast_series(
+  db |> filter_taxa(species == "Marmota_baibacina", quiet = TRUE),
+  clim,
+  times      = TIMES,
+  focus      = tianshan,
+  predictors = VARS,
+  resolution = 0.1,
+  replicates = 10,
+  quiet      = TRUE
+)
+
+one$species |>
+  transmute(
+    time,
+    cells,
+    pct      = round(100 * delta_from_present / present_cells, 1),
+    cells_sd = round(cells_sd, 1),
+    z_meas   = round(delta_from_present / cells_sd, 1)
+  ) |>
+  print(n = Inf)
+```
+
+The two standardised columns answer different questions. `pct` is the size of
+the change; `z_meas` is whether the change exceeds what redrawing the sample
+would produce anyway. A change of a few percent that is many measurement SDs
+wide is a real shift in a tightly estimated range; the same few percent inside
+one measurement SD is not distinguishable from sampling noise.
+
+Contrast this with dividing by the spread of the deltas themselves, which is
+what the figures above once did. That denominator gets *smaller* the more
+stable a trajectory is, so it awards its largest scores to the species that
+changed least -- the opposite of what a standardised effect should do.
 
 ## Chronological uncertainty
 
