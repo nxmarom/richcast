@@ -18,14 +18,24 @@ go through the same functions.
 ## Installation
 
 ```r
-# install.packages("pak")
-pak::pak("nxmarom/richcast")
+# install.packages("remotes")
+remotes::install_github("nxmarom/richcast", build_vignettes = TRUE)
 ```
 
-Or with devtools:
+`build_vignettes = TRUE` is worth the extra minute. Without it the package
+installs correctly and nothing errors, but `vignette("tianshan")` finds
+nothing — the vignettes are simply absent, silently. They are precomputed, so
+building them only renders the stored output; it does not re-run any models.
+
+`pak::pak("nxmarom/richcast")` and `devtools::install_github()` also work and
+have the same default.
+
+Some dependencies are not on CRAN. `rnaturalearthhires` lives on r-universe and
+is only needed for `focus_global(scale = "large")`, which degrades to medium
+resolution with a warning when it is absent:
 
 ```r
-devtools::install_github("nxmarom/richcast")
+install.packages("rnaturalearthhires", repos = "https://ropensci.r-universe.dev")
 ```
 
 ## Where the data comes from
