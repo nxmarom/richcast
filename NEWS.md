@@ -92,6 +92,50 @@ enabled. Aggregation now happens only in `prepare_climate()`, and
   form for a faceted heatmap. Surfaces are stored wrapped, so the series still
   survives `saveRDS()`.
 
+## Per-species occupancy of the focus
+
+* `res$species` gains `focus_cells`, `focus_present_cells`,
+  `focus_delta_from_previous` and `focus_delta_from_present`: each projected
+  range clipped to `focus`, on the grid the richness surface is built at.
+
+  `cells` is counted over the species' study extent -- its range plus the
+  fitting buffer -- so for a widespread taxon it is a continental number.
+  `res$richness` is a focus quantity. Nothing previously reported the two on
+  the same region, so a per-species trajectory plotted beside a richness curve
+  silently answered a different question, and species selected by the
+  `prefilter_buffer` expansion but absent from the focus had trajectories
+  indistinguishable from those of species actually present. In the Tian Shan
+  vignette that was 4 of 32 species with zero cells in the study region at
+  every slice, and it inverted the growth ranking: *Marmota baibacina* leads
+  on `cells` at +30% net growth and is flat at -3.4% on `focus_cells`.
+
+  The two columns are counts on different grids -- `cells` on the climate
+  grid, `focus_cells` on `resolution` -- so compare each against itself across
+  slices, and use area to compare one against the other. See the
+  two-geographies section of `?run_hindcast_series`.
+
+* `res$species` also gains `focus_suit_q90` and `focus_suit_margin`: the
+  ninetieth percentile of suitability inside `focus` before thresholding, and
+  that value less the species' own threshold.
+
+  A cell count cannot distinguish a focus inside a species' niche from one
+  sitting on its cutoff, and the two behave completely differently. In the
+  Tian Shan vignette *Ellobius talpinus* has a negative margin at every slice
+  and its regional footprint runs 2, 1221, 260, 120, 1418 cells across
+  consecutive centuries while its range-wide count barely moves -- the
+  threshold flickering, not a range responding. Nine of 26 species there have
+  a negative margin, holding 0.4-17% of the region above their own cutoff.
+
+  Screening on volatility instead is not equivalent: a fold-change rule on
+  `focus_cells` catches only three of those nine, missing *Castor fiber*,
+  which varies less than two-fold and led the regional growth ranking while
+  holding 2-5% of the region above threshold.
+
+* `project_replicates()` returns `representative` (the index of the
+  median-extent replicate) and `suit` (that replicate's suitability surface).
+  `run_hindcast_series()` now takes the representative index from there
+  instead of recomputing it.
+
 ## Baselines
 
 * `run_hindcast_series()` gains `baseline`, naming the slice `delta_from_present`

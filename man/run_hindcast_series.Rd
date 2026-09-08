@@ -79,8 +79,14 @@ statistics are wanted.}
 }
 \value{
 A \code{richcast_series} with three tibbles -- \code{richness} (one row per
-time slice), \code{species} (one row per species per slice, with deltas), and
-\code{models} (fit diagnostics) -- plus the fitted models and projected ranges.
+time slice, summarising \code{focus} only), \code{species} (one row per species per
+slice: \code{cells} over the species' study extent, \code{focus_cells} over \code{focus},
+each differenced against the previous slice and against the baseline, plus
+\code{focus_suit_q90} and \code{focus_suit_margin} saying whether the focus clears
+the species' threshold at all), and \code{models} (fit diagnostics) -- plus the
+fitted models and projected ranges. See the two-geographies section before
+plotting \code{cells}, and the niche section before reading \code{focus_cells} as a
+range response.
 }
 \description{
 Fits one model per species, projects each onto every requested time slice,
@@ -163,6 +169,77 @@ cells, all 8 below 100 varied by more than 25\% across sampling seeds at
 their worst slice, and at 200 the rule stops holding. \code{min_cells = 0}
 disables the screen. \code{?richcast-resolvability} records the measurements,
 including what the screen does \emph{not} fix.
+}
+
+\section{Two geographies}{
+
+
+\verb{$species} reports every range size twice, over two different regions, and
+which one a figure should use is a real choice rather than a formality.
+
+\code{cells} is counted over the species' \strong{study extent} -- its own range plus
+the fitting buffer -- because that is the region the model was fitted and
+projected over. It is the honest measure of what happened to the \emph{species}.
+For a widespread taxon it is a continental number: in the Tian Shan
+vignette \emph{Mus musculus} contributes 190225 cells at 1350 CE, of which 13215
+lie in the study region.
+
+\code{focus_cells} is the same range clipped to \code{focus}, on the same grid and
+with the same \code{touches} rule the richness surface uses. It is the measure
+that answers "what happened \emph{here}", and it is the one commensurable with
+\verb{$richness}.
+
+The two are counts on \strong{different grids}: \code{cells} on the climate grid,
+\code{focus_cells} on the \code{resolution} grid the richness surface is built at.
+Their ratio is therefore not a fraction of range inside the focus, and
+\code{focus_cells} can exceed \code{cells} where the richness grid is the finer of
+the two. Compare each column against itself across slices -- the grid
+cancels -- and use area, not counts, to compare one against the other.
+
+The distinction matters most for the species \code{focus} barely contains.
+Species are selected by intersecting a \code{prefilter_buffer}-degree expansion
+of the focus, so a run legitimately includes taxa that reach toward the
+study region without entering it. Those species have rows in \verb{$species}
+and trajectories that move -- and \code{focus_cells} of zero at every slice.
+Plotting \code{cells} without checking \code{focus_cells} puts them on the page as
+though they were part of the local assemblage.
+
+Both are differenced the same two ways, giving \code{focus_delta_from_previous}
+and \code{focus_delta_from_present} alongside the study-extent pair.
+}
+
+\section{Is the focus inside the niche}{
+
+
+\code{focus_cells} says how much of the focus a species holds. It does not say
+whether holding it means anything, and that is a separate question with a
+separate answer.
+
+A projected range is a threshold applied to a continuous surface. Where the
+focus sits well inside a species' modelled niche, the cell count moves when
+the climate moves. Where it sits \emph{at} the cutoff, the count moves when
+anything moves: a shift of a few hundredths in suitability flips large areas
+across the threshold, and the resulting trajectory is a property of the
+cutoff rather than of the region. The two cases are indistinguishable in
+\code{focus_cells} alone -- both give plausible numbers that change between
+slices.
+
+\code{focus_suit_q90} is the ninetieth percentile of suitability inside the focus
+before thresholding, and \code{focus_suit_margin} is that minus the species' own
+threshold. A negative margin means the focus does not clear the cutoff even
+at its ninetieth percentile, so whatever cells the species contributes there
+are an edge effect. Screen on \code{focus_suit_margin > 0} before reading
+regional trajectories as range responses.
+
+Volatility is not a usable substitute. In the Tian Shan vignette nine of 26
+species have a negative margin, holding between 0.4\% and 17\% of the region
+above threshold; a fold-change screen on \code{focus_cells} catches only three of
+them, because a footprint can stay small without swinging. The six it misses
+include the species that led the regional growth ranking.
+
+With \code{replicates > 1}, \code{focus_cells} is measured on the representative
+(median-extent) replicate -- the one \verb{$ranges} stores -- rather than being
+a median of per-replicate focus counts.
 }
 
 \section{Choosing a baseline}{

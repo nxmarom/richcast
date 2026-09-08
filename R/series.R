@@ -81,6 +81,73 @@
 #' disables the screen. `?richcast-resolvability` records the measurements,
 #' including what the screen does *not* fix.
 #'
+#' @section Two geographies:
+#'
+#' `$species` reports every range size twice, over two different regions, and
+#' which one a figure should use is a real choice rather than a formality.
+#'
+#' `cells` is counted over the species' **study extent** -- its own range plus
+#' the fitting buffer -- because that is the region the model was fitted and
+#' projected over. It is the honest measure of what happened to the *species*.
+#' For a widespread taxon it is a continental number: in the Tian Shan
+#' vignette *Mus musculus* contributes 190225 cells at 1350 CE, of which 13215
+#' lie in the study region.
+#'
+#' `focus_cells` is the same range clipped to `focus`, on the same grid and
+#' with the same `touches` rule the richness surface uses. It is the measure
+#' that answers "what happened *here*", and it is the one commensurable with
+#' `$richness`.
+#'
+#' The two are counts on **different grids**: `cells` on the climate grid,
+#' `focus_cells` on the `resolution` grid the richness surface is built at.
+#' Their ratio is therefore not a fraction of range inside the focus, and
+#' `focus_cells` can exceed `cells` where the richness grid is the finer of
+#' the two. Compare each column against itself across slices -- the grid
+#' cancels -- and use area, not counts, to compare one against the other.
+#'
+#' The distinction matters most for the species `focus` barely contains.
+#' Species are selected by intersecting a `prefilter_buffer`-degree expansion
+#' of the focus, so a run legitimately includes taxa that reach toward the
+#' study region without entering it. Those species have rows in `$species`
+#' and trajectories that move -- and `focus_cells` of zero at every slice.
+#' Plotting `cells` without checking `focus_cells` puts them on the page as
+#' though they were part of the local assemblage.
+#'
+#' Both are differenced the same two ways, giving `focus_delta_from_previous`
+#' and `focus_delta_from_present` alongside the study-extent pair.
+#'
+#' @section Is the focus inside the niche:
+#'
+#' `focus_cells` says how much of the focus a species holds. It does not say
+#' whether holding it means anything, and that is a separate question with a
+#' separate answer.
+#'
+#' A projected range is a threshold applied to a continuous surface. Where the
+#' focus sits well inside a species' modelled niche, the cell count moves when
+#' the climate moves. Where it sits *at* the cutoff, the count moves when
+#' anything moves: a shift of a few hundredths in suitability flips large areas
+#' across the threshold, and the resulting trajectory is a property of the
+#' cutoff rather than of the region. The two cases are indistinguishable in
+#' `focus_cells` alone -- both give plausible numbers that change between
+#' slices.
+#'
+#' `focus_suit_q90` is the ninetieth percentile of suitability inside the focus
+#' before thresholding, and `focus_suit_margin` is that minus the species' own
+#' threshold. A negative margin means the focus does not clear the cutoff even
+#' at its ninetieth percentile, so whatever cells the species contributes there
+#' are an edge effect. Screen on `focus_suit_margin > 0` before reading
+#' regional trajectories as range responses.
+#'
+#' Volatility is not a usable substitute. In the Tian Shan vignette nine of 26
+#' species have a negative margin, holding between 0.4% and 17% of the region
+#' above threshold; a fold-change screen on `focus_cells` catches only three of
+#' them, because a footprint can stay small without swinging. The six it misses
+#' include the species that led the regional growth ranking.
+#'
+#' With `replicates > 1`, `focus_cells` is measured on the representative
+#' (median-extent) replicate -- the one `$ranges` stores -- rather than being
+#' a median of per-replicate focus counts.
+#'
 #' @section Choosing a baseline:
 #'
 #' `delta_from_present` subtracts a baseline range size from each slice, so it
@@ -142,8 +209,14 @@
 #' @param quiet Suppress per-species progress.
 #' @param ... Further arguments passed to [fit_sdm()].
 #' @return A `richcast_series` with three tibbles -- `richness` (one row per
-#'   time slice), `species` (one row per species per slice, with deltas), and
-#'   `models` (fit diagnostics) -- plus the fitted models and projected ranges.
+#'   time slice, summarising `focus` only), `species` (one row per species per
+#'   slice: `cells` over the species' study extent, `focus_cells` over `focus`,
+#'   each differenced against the previous slice and against the baseline, plus
+#'   `focus_suit_q90` and `focus_suit_margin` saying whether the focus clears
+#'   the species' threshold at all), and `models` (fit diagnostics) -- plus the
+#'   fitted models and projected ranges. See the two-geographies section before
+#'   plotting `cells`, and the niche section before reading `focus_cells` as a
+#'   range response.
 #' @seealso [fit_sdm()], [richness_stats()]
 #' @export
 run_hindcast_series <- function(db,
@@ -251,14 +324,14 @@ run_hindcast_series <- function(db,
         rep_ranges[[as.character(tt)]][[sp]] <- ps$ranges
         # The representative range is the replicate whose extent is the median,
         # so maps show a typical draw rather than an arbitrary one.
-        med <- which.min(abs(ps$cells - stats::median(ps$cells)))[1]
-        ranges[[as.character(tt)]][[sp]] <- ps$ranges[[med]]
+        ranges[[as.character(tt)]][[sp]] <- ps$ranges[[ps$representative]]
         cell_val <- stats::median(ps$cells)
         counts[[length(counts) + 1L]] <- tibble::tibble(
           species = sp, time = tt, cells = cell_val,
           present_cells = base_cells,
           cells_min = min(ps$cells), cells_max = max(ps$cells),
-          cells_sd = stats::sd(ps$cells)
+          cells_sd = stats::sd(ps$cells),
+          focus_suit_q90 = focus_suit_q90(terra::unwrap(ps$suit), focus)
         )
       } else {
         proj <- try_step(
@@ -269,7 +342,8 @@ run_hindcast_series <- function(db,
         ranges[[as.character(tt)]][[sp]] <- proj$range
         counts[[length(counts) + 1L]] <- tibble::tibble(
           species = sp, time = tt, cells = proj$cells,
-          present_cells = base_cells
+          present_cells = base_cells,
+          focus_suit_q90 = focus_suit_q90(terra::unwrap(proj$suit), focus)
         )
       }
     }
@@ -395,13 +469,51 @@ run_hindcast_series <- function(db,
   richness$period <- paste0("hindcast_", richness$time)
   richness <- dplyr::bind_rows(present_row, richness)
 
+  # --- Per-species occupancy of the focus ---------------------------------
+  # `cells` is measured over each species' own study extent, so for a
+  # widespread taxon it is a continental number and moves for continental
+  # reasons. Richness is a focus-only quantity. Without a focus-restricted
+  # per-species count the two cannot be read against each other, and a
+  # trajectory panel silently answers a different question from the richness
+  # curve beside it. Every species is counted, held-out ones included, so the
+  # column means the same thing in every row.
+  focus_counts <- dplyr::bind_rows(lapply(times, function(tt) {
+    fc <- focus_cells_each(ranges[[as.character(tt)]], focus,
+                           resolution = resolution)
+    tibble::tibble(species = names(fc), time = tt, focus_cells = unname(fc))
+  }))
+  focus_base <- focus_cells_each(baselines, focus, resolution = resolution)
+  thresholds <- vapply(models, function(m) m$threshold, numeric(1))
+
   # --- Species-level deltas ----------------------------------------------
   species_tbl <- dplyr::bind_rows(counts) |>
+    dplyr::left_join(focus_counts, by = c("species", "time")) |>
+    dplyr::mutate(
+      # Distance from the cutoff, in suitability units. Negative means the
+      # focus does not clear this species' own threshold even at its ninetieth
+      # percentile, so whatever cells it does contribute are an edge effect.
+      focus_suit_margin = .data$focus_suit_q90 -
+        unname(thresholds[.data$species]),
+      # A species with no suitable area anywhere has no range polygon, so it
+      # is absent from `ranges` and from `baselines` rather than present with
+      # an empty geometry. That is a zero here, not an unknown -- but a
+      # baseline that failed to project is genuinely unknown, and
+      # `present_cells` already records which is which.
+      focus_cells = dplyr::coalesce(.data$focus_cells, 0L),
+      focus_present_cells = ifelse(
+        is.na(.data$present_cells), NA_integer_,
+        dplyr::coalesce(unname(focus_base[.data$species]), 0L)
+      )
+    ) |>
     dplyr::arrange(.data$species, .data$time) |>   # numeric time: correct lag
     dplyr::group_by(.data$species) |>
     dplyr::mutate(
       delta_from_previous = .data$cells - dplyr::lag(.data$cells),
-      delta_from_present  = .data$cells - .data$present_cells
+      delta_from_present  = .data$cells - .data$present_cells,
+      focus_delta_from_previous =
+        .data$focus_cells - dplyr::lag(.data$focus_cells),
+      focus_delta_from_present =
+        .data$focus_cells - .data$focus_present_cells
     ) |>
     dplyr::ungroup()
 

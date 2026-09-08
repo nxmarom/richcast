@@ -44,6 +44,49 @@ test_that("subregions add their own columns", {
   expect_equal(s$site_max, 1)
 })
 
+test_that("focus_cells_each counts each range separately, clipped to the focus", {
+  focus <- focus_box(c(0, 4, 0, 4), label = "test")
+  ranges <- list(
+    inside  = sf::st_sfc(square(0, 0, 2), crs = 4326),   # wholly within
+    partial = sf::st_sfc(square(3, 3, 2), crs = 4326),   # half hangs out
+    outside = sf::st_sfc(square(50, 50, 2), crs = 4326), # nowhere near
+    gone    = NULL
+  )
+  n <- focus_cells_each(ranges, focus, resolution = 0.5)
+
+  expect_named(n, c("inside", "partial", "outside", "gone"))
+  expect_type(n, "integer")
+  # A 2-degree square on a 0.5-degree grid is 4x4 cells; touches = TRUE adds
+  # the row and column the boundary grazes, so assert the ordering rather than
+  # exact counts, which is what the column is actually read for.
+  expect_gt(n[["inside"]], 0L)
+  expect_lt(n[["partial"]], n[["inside"]])
+  # The species that never enters the focus contributes nothing -- the case
+  # that made a trajectory panel appear for a species absent from the region.
+  expect_equal(n[["outside"]], 0L)
+  expect_equal(n[["gone"]], 0L)
+})
+
+test_that("focus_cells_each and richness_stack agree on the same ranges", {
+  focus <- focus_box(c(0, 4, 0, 4))
+  ranges <- list(
+    a = sf::st_sfc(square(0, 0, 3), crs = 4326),
+    b = sf::st_sfc(square(2, 0, 2), crs = 4326),
+    c = NULL
+  )
+  r <- richness_stack(ranges, focus, resolution = 0.5, quiet = TRUE)
+  n <- focus_cells_each(ranges, focus, resolution = 0.5)
+
+  # Richness is the sum over species of exactly these counts, so the totals
+  # must match. If they drift, the two columns are being measured differently
+  # and reading focus_cells against $richness stops being valid.
+  expect_equal(sum(n), sum(terra::values(r, mat = FALSE, na.rm = TRUE)))
+})
+
+test_that("focus_cells_each survives an empty range list", {
+  expect_length(focus_cells_each(list(), focus_box(c(0, 4, 0, 4))), 0)
+})
+
 test_that("richness_stack rejects a bare bbox in place of a focus", {
   expect_error(
     richness_stack(list(), c(0, 4, 0, 4)),

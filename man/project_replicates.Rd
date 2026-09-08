@@ -18,8 +18,10 @@ project_replicates(set, climate, time, window = NULL, quiet = FALSE)
 \item{quiet}{Suppress messages.}
 }
 \value{
-A \code{richcast_projection_set}: \code{cells} (one per replicate) and
-\code{ranges} (one \code{sfc} or \code{NULL} per replicate).
+A \code{richcast_projection_set}: \code{cells} (one per replicate), \code{ranges}
+(one \code{sfc} or \code{NULL} per replicate), \code{representative} (the index of the
+median-extent replicate) and \code{suit} (that replicate's suitability surface,
+wrapped).
 }
 \description{
 Reads the slice once and scores every replicate against it. That ordering is

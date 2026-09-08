@@ -76,8 +76,10 @@ print.richcast_sdm_set <- function(x, ...) {
 #' @param time Year CE, or `"present"`.
 #' @param window Optional [gaussian_window()].
 #' @param quiet Suppress messages.
-#' @return A `richcast_projection_set`: `cells` (one per replicate) and
-#'   `ranges` (one `sfc` or `NULL` per replicate).
+#' @return A `richcast_projection_set`: `cells` (one per replicate), `ranges`
+#'   (one `sfc` or `NULL` per replicate), `representative` (the index of the
+#'   median-extent replicate) and `suit` (that replicate's suitability surface,
+#'   wrapped).
 #' @seealso [fit_replicates()]
 #' @export
 project_replicates <- function(set, climate, time, window = NULL,
@@ -112,8 +114,17 @@ project_replicates <- function(set, climate, time, window = NULL,
     ranges[[i]] <- b$polygon
   }
 
+  # The representative replicate is the one whose extent is the median, so
+  # anything showing a single draw shows a typical one. Its suitability surface
+  # is re-scored rather than retained through the loop: keeping all of them
+  # costs the study extent times the replicate count, and only one is used.
+  representative <- which.min(abs(cells - stats::median(cells)))[1]
+  rep_fit <- set$fits[[representative]]
+  suit <- score_raster(past, rep_fit$model, rep_fit$threshold, rep_fit$land)$suit
+
   structure(list(species = set$species, time = time, cells = cells,
                  ranges = ranges, replicates = set$replicates,
+                 representative = representative, suit = terra::wrap(suit),
                  window = window),
             class = "richcast_projection_set")
 }

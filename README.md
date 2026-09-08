@@ -100,7 +100,8 @@ res <- run_hindcast_series(
 )
 
 res$richness   # one row per slice: mean, median, max, variance
-res$species    # per species per slice, with deltas
+res$species    # per species per slice: cells over the study extent,
+               # focus_cells over the focus, each differenced two ways
 res$models     # AUC, threshold, sample sizes
 ```
 

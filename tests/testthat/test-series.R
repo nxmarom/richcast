@@ -85,6 +85,131 @@ test_that("run_hindcast_series orders time chronologically and lags correctly", 
   )
 })
 
+test_that("focus_cells reports the focus, cells reports the study extent", {
+  skip_if_not_installed("maxnet")
+  dir <- withr::local_tempdir()
+  times <- c(850, 950, 1050)
+  clim <- structured_climate(dir, times = times)
+  db <- two_species_db()
+
+  # A focus around Genus_low only. Genus_high sits at 6-9 on both axes, so it
+  # is selected by the 8-degree prefilter and modelled, but has no business
+  # appearing in this region's assemblage.
+  res <- suppressWarnings(run_hindcast_series(
+    db, clim, times = times,
+    focus = focus_box(c(0, 4, 0, 4), label = "low corner"),
+    predictors = c("bio01", "bio12"), land = fake_land(),
+    resolution = 0.25, min_cells = 0, quiet = TRUE
+  ))
+
+  expect_true(all(c("focus_cells", "focus_present_cells",
+                    "focus_delta_from_previous", "focus_delta_from_present")
+                  %in% names(res$species)))
+  expect_type(res$species$focus_cells, "integer")
+  expect_true(all(res$species$focus_cells >= 0))
+
+  # Both species are modelled; only one is in the region.
+  expect_setequal(unique(res$species$species), c("Genus_low", "Genus_high"))
+  low <- dplyr::filter(res$species, .data$species == "Genus_low")
+  expect_true(all(low$focus_cells > 0))
+
+  # The focus lag follows the same chronological rule as the study-extent one.
+  expect_true(all(is.na(low$focus_delta_from_previous[low$time == 850])))
+  ordered <- dplyr::arrange(low, .data$time)
+  expect_equal(ordered$focus_delta_from_previous[-1], diff(ordered$focus_cells))
+  expect_equal(ordered$focus_delta_from_present,
+               ordered$focus_cells - ordered$focus_present_cells)
+
+  # focus_cells is commensurable with the richness surface; cells is not,
+  # being counted over each species' own study extent on the climate grid.
+  per_slice <- res$species |>
+    dplyr::group_by(.data$time) |>
+    dplyr::summarise(total = sum(.data$focus_cells), .groups = "drop") |>
+    dplyr::arrange(.data$time)
+  from_richness <- res$richness |>
+    dplyr::filter(.data$period != "present") |>
+    dplyr::arrange(.data$time)
+  expect_equal(per_slice$total,
+               from_richness$mean_richness * from_richness$cells)
+})
+
+test_that("focus_suit_margin separates a focus inside the niche from one on its edge", {
+  skip_if_not_installed("maxnet")
+  dir <- withr::local_tempdir()
+  times <- c(850, 950, 1050)
+  clim <- structured_climate(dir, times = times)
+  db <- two_species_db()
+
+  # The climate is a plane increasing with x and y, and the two species sit at
+  # opposite ends of it. A focus over Genus_low's own corner is inside its
+  # niche and outside Genus_high's.
+  res <- suppressWarnings(run_hindcast_series(
+    db, clim, times = times,
+    focus = focus_box(c(0, 3, 0, 3), label = "low corner"),
+    predictors = c("bio01", "bio12"), land = fake_land(),
+    resolution = 0.25, min_cells = 0, quiet = TRUE
+  ))
+
+  expect_true(all(c("focus_suit_q90", "focus_suit_margin") %in% names(res$species)))
+  q <- res$species$focus_suit_q90
+  expect_true(all(is.na(q) | (q >= 0 & q <= 1)))
+
+  # The margin is the q90 less that species' own threshold, per species. The
+  # models table carries names on its vapply-built columns, so strip them
+  # before comparing against the unnamed column.
+  chk <- dplyr::left_join(res$species, res$models[, c("species", "threshold")],
+                          by = "species")
+  expect_equal(chk$focus_suit_margin,
+               unname(chk$focus_suit_q90 - chk$threshold))
+
+  by_sp <- res$species |>
+    dplyr::group_by(.data$species) |>
+    dplyr::summarise(margin = min(.data$focus_suit_margin), .groups = "drop")
+
+  # Positive for the species whose corner of the gradient this is.
+  expect_gt(by_sp$margin[by_sp$species == "Genus_low"], 0)
+
+  # Genus_high is fitted at the far end and its study extent -- range plus a
+  # buffer of 15%, floored at one degree -- never reaches this focus, so it is
+  # projected nowhere near it. That is NA, not a low margin: the distinction
+  # matters, because "not modelled here" and "modelled here and unsuitable"
+  # are different claims and only the second is evidence of anything.
+  expect_true(is.na(by_sp$margin[by_sp$species == "Genus_high"]))
+})
+
+test_that("focus_suit_q90 summarises the focus and reports no overlap as NA", {
+  r <- terra::rast(nrows = 20, ncols = 20, xmin = 0, xmax = 10,
+                   ymin = 0, ymax = 10, crs = "EPSG:4326")
+
+  # Constant surface: every quantile is that constant, whatever the focus.
+  terra::values(r) <- 0.8
+  expect_equal(focus_suit_q90(r, focus_box(c(1, 4, 1, 4))), 0.8)
+
+  # A tenth of the focus at 0.9 and the rest at 0.1 puts the 90th percentile
+  # at the top group -- the point of using q90 rather than the maximum, which
+  # a single cell would set, or the mean, which the unsuitable bulk would drag.
+  terra::values(r) <- ifelse(seq_len(terra::ncell(r)) %% 10 == 0, 0.9, 0.1)
+  expect_gt(focus_suit_q90(r, focus_box(c(0, 10, 0, 10))), 0.1)
+
+  # A focus the projection does not reach at all: terra aborts on the crop, and
+  # the answer is "not measured here" rather than a number.
+  expect_true(is.na(focus_suit_q90(r, focus_box(c(50, 55, 50, 55)))))
+})
+
+test_that("a species that never enters the focus is visible as zero", {
+  # This is the bug the column exists for: without it such a species has a
+  # perfectly ordinary-looking trajectory and no way to tell it contributes
+  # nothing to the richness it is plotted beside.
+  focus <- focus_box(c(0, 4, 0, 4))
+  n <- focus_cells_each(
+    list(here = sf::st_sfc(square(1, 1, 1), crs = 4326),
+         elsewhere = sf::st_sfc(square(20, 20, 1), crs = 4326)),
+    focus, resolution = 0.5
+  )
+  expect_gt(n[["here"]], 0L)
+  expect_equal(n[["elsewhere"]], 0L)
+})
+
 test_that("run_hindcast_series validates its inputs", {
   dir <- withr::local_tempdir()
   clim <- structured_climate(dir, times = 850)
