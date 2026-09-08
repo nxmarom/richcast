@@ -172,6 +172,7 @@ res
 #> <richcast_series>
 #> 32 species x 11 slices (850-1850 CE)
 #> focus: Tian Shan
+#> resolvability: ran at min_cells = 100, 0 of 32 held out
 #> `$richness` `$species` `$models` `$fits` `$ranges`
 ```
 
@@ -294,7 +295,7 @@ res$richness |>
   theme_minimal()
 ```
 
-![plot of chunk richness-plot](tianshan-richness-plot-1.png)
+![plot of chunk richness-plot](tianshan-richness-plot-1.svg)
 
 ### Where the richness is
 
@@ -431,7 +432,7 @@ richness_surface(res, 1350)
 ## Species trajectories
 
 `res$species` carries one row per species per slice, with each range expressed
-as a suitable-cell count and differenced two ways.
+as a suitable-cell count over two different regions, each differenced two ways.
 
 One species across all eleven slices:
 
@@ -439,21 +440,21 @@ One species across all eleven slices:
 ``` r
 res$species |>
   filter(species == "Marmota_baibacina") |>
-  select(time, cells, delta_from_previous, delta_from_present)
-#> # A tibble: 11 × 4
-#>     time cells delta_from_previous delta_from_present
-#>    <dbl> <int>               <int>              <int>
-#>  1   850  7262                  NA                966
-#>  2   950  7508                 246               1212
-#>  3  1050  7224                -284                928
-#>  4  1150  6734                -490                438
-#>  5  1250  6641                 -93                345
-#>  6  1350  6867                 226                571
-#>  7  1450  7395                 528               1099
-#>  8  1550  8288                 893               1992
-#>  9  1650  8371                  83               2075
-#> 10  1750  7264               -1107                968
-#> 11  1850  9438                2174               3142
+  select(time, cells, focus_cells, delta_from_previous, delta_from_present)
+#> # A tibble: 11 × 5
+#>     time cells focus_cells delta_from_previous delta_from_present
+#>    <dbl> <int>       <int>               <int>              <int>
+#>  1   850  7262        5224                  NA                966
+#>  2   950  7508        6444                 246               1212
+#>  3  1050  7224        5829                -284                928
+#>  4  1150  6734        5721                -490                438
+#>  5  1250  6641        5415                 -93                345
+#>  6  1350  6867        4603                 226                571
+#>  7  1450  7395        5723                 528               1099
+#>  8  1550  8288        4852                 893               1992
+#>  9  1650  8371        5288                  83               2075
+#> 10  1750  7264        5164               -1107                968
+#> 11  1850  9438        5046                2174               3142
 ```
 
 Both deltas are computed after sorting time numerically. Note the single `NA`
@@ -478,6 +479,98 @@ res$species |>
 #> 1      32           32 TRUE
 ```
 
+### Two geographies, and why the trajectories use the second
+
+`cells` is counted over each species' **study extent** -- its own range plus
+the fitting buffer -- because that is the region the model was fitted and
+projected over. For a widespread Eurasian rodent that is a continental number,
+and it moves for continental reasons. The richness curve above is a Tian Shan
+number. The two are not the same measurement, and a trajectory drawn from
+`cells` beside a richness curve drawn from the focus invites a comparison that
+does not hold.
+
+`focus_cells` closes that gap: the same projected range, clipped to the Tian
+Shan, on the same grid and with the same `touches` rule the richness surface
+uses. It is the column commensurable with `res$richness`.
+
+
+``` r
+occupancy <- res$species |>
+  group_by(species) |>
+  summarise(
+    median_cells       = stats::median(cells),
+    median_focus_cells = stats::median(focus_cells),
+    ever_in_focus      = max(focus_cells) > 0,
+    .groups = "drop"
+  ) |>
+  arrange(median_focus_cells)
+
+occupancy |> print(n = Inf)
+#> # A tibble: 32 × 4
+#>    species                   median_cells median_focus_cells ever_in_focus
+#>    <chr>                            <int>              <int> <lgl>        
+#>  1 Bandicota_bengalensis            13949                  0 FALSE        
+#>  2 Lasiopodomys_brandtii             5971                  0 FALSE        
+#>  3 Marmota_sibirica                 10536                  0 FALSE        
+#>  4 Meriones_crassus                 26188                  0 FALSE        
+#>  5 Marmota_bobak                     5511                  8 TRUE         
+#>  6 Phodopus_sungorus                 7807                 82 TRUE         
+#>  7 Rattus_tanezumi                  30092                433 TRUE         
+#>  8 Ellobius_talpinus                12000                536 TRUE         
+#>  9 Cricetulus_barabensis            25698                636 TRUE         
+#> 10 Pteromys_volans                  83167                670 TRUE         
+#> 11 Castor_fiber                     31242                783 TRUE         
+#> 12 Allocricetulus_eversmanni         8910                859 TRUE         
+#> 13 Spermophilus_pygmaeus             6804                883 TRUE         
+#> 14 Sicista_subtilis                 13539                890 TRUE         
+#> 15 Meriones_unguiculatus            20463               1239 TRUE         
+#> 16 Myopus_schisticolor              60964               1339 TRUE         
+#> 17 Microtus_agrestis                57491               2425 TRUE         
+#> 18 Marmota_himalayana               11215               2941 TRUE         
+#> 19 Rattus_rattus                   101071               2989 TRUE         
+#> 20 Apodemus_agrarius                72305               3747 TRUE         
+#> 21 Micromys_minutus                 91659               3826 TRUE         
+#> 22 Arvicola_amphibius               73885               4566 TRUE         
+#> 23 Lagurus_lagurus                  28951               4967 TRUE         
+#> 24 Marmota_baibacina                 7264               5288 TRUE         
+#> 25 Rattus_norvegicus                99946               6249 TRUE         
+#> 26 Microtus_socialis                17212               7214 TRUE         
+#> 27 Apodemus_uralensis               50160               7470 TRUE         
+#> 28 Rhombomys_opimus                 23040               7929 TRUE         
+#> 29 Meriones_tamariscinus            17632               9323 TRUE         
+#> 30 Dryomys_nitedula                 47428               9506 TRUE         
+#> 31 Meriones_meridianus              27830              11056 TRUE         
+#> 32 Mus_musculus                    188240              13204 TRUE
+```
+
+Two things fall out of that table.
+
+**Some species are not here at all.** Species are chosen by intersecting the
+focus expanded by `prefilter_buffer` -- eight degrees, which stretches the box
+to 60-95 degrees E and 31-54 degrees N -- so the run legitimately includes taxa
+that approach the Tian Shan without entering it. Four of the 32 have zero
+suitable cells inside the focus at every slice. They are real model output and
+they belong in `res$species`; they do not belong in a figure about this region,
+and before `focus_cells` existed there was nothing in the table to reveal that.
+
+
+``` r
+occupancy |> filter(!ever_in_focus)
+#> # A tibble: 4 × 4
+#>   species               median_cells median_focus_cells ever_in_focus
+#>   <chr>                        <int>              <int> <lgl>        
+#> 1 Bandicota_bengalensis        13949                  0 FALSE        
+#> 2 Lasiopodomys_brandtii         5971                  0 FALSE        
+#> 3 Marmota_sibirica             10536                  0 FALSE        
+#> 4 Meriones_crassus             26188                  0 FALSE
+```
+
+**The two counts are not on the same grid.** `cells` is counted on the climate
+grid, `focus_cells` on the 0.1-degree grid the richness surface is built at,
+so their ratio is not a fraction of range inside the focus. Compare each column
+against itself across slices, where the grid cancels; use area to compare one
+against the other.
+
 To compare species with very different range sizes, put each trajectory in
 units of its own standard deviation. Note that this divides by the SD without
 subtracting the mean: `scale()` would do both, which moves zero to *average
@@ -485,94 +578,157 @@ change across the series* while it still looks like *no change from present* --
 and if most slices were smaller than today, every taxon then appears to sit a
 full standard deviation above the line for purely arithmetic reasons.
 
+### Which species can carry a regional trajectory
+
+`focus_cells` says how much of the Tian Shan a species holds. It does not say
+whether holding it means anything. A projected range is a threshold applied to
+a continuous surface: where the region sits well inside a species' modelled
+niche the cell count moves when the climate moves, and where it sits *at* the
+cutoff the count moves when anything does. Both produce plausible numbers that
+change between slices, and `focus_cells` alone cannot tell them apart.
+
+`focus_suit_margin` can. It is the ninetieth percentile of suitability inside
+the focus, less that species' own threshold, so a negative value means the
+region does not clear the cutoff even at its ninetieth percentile.
+
 
 ``` r
-# Referenced to each species' own median across the series.
-traj <- res$species |>
-  group_by(species) |>
-  mutate(ref = stats::median(cells),
-         pct = 100 * (cells - ref) / ref) |>
-  ungroup() |>
-  filter(ref > 0)
+# How many grid cells the focus holds, so occupancy can be read as a share of
+# the region rather than as a bare count.
+focus_n <- res$richness$cells[1]
 
-# Net growth across the series: how much larger the youngest slice is than the
-# oldest. Measured end to end rather than as a mean, so a species that expanded
-# steadily and one that merely ended high are not scored alike.
-growth <- traj |>
+niche <- res$species |>
   group_by(species) |>
   summarise(
-    growth_pct = 100 * (cells[which.max(time)] - cells[which.min(time)]) /
-      cells[which.min(time)],
+    median_focus_cells = stats::median(focus_cells),
+    worst_margin       = round(min(focus_suit_margin), 3),
+    best_pct_of_focus  = round(100 * max(focus_cells) / focus_n, 1),
     .groups = "drop"
-  )
+  ) |>
+  filter(median_focus_cells >= 100) |>
+  arrange(worst_margin)
+
+niche |> print(n = Inf)
+#> # A tibble: 26 × 4
+#>    species                   median_focus_cells worst_margin best_pct_of_focus
+#>    <chr>                                  <int>        <dbl>             <dbl>
+#>  1 Sicista_subtilis                         890       -0.245               7.5
+#>  2 Allocricetulus_eversmanni                859       -0.207               9  
+#>  3 Rattus_tanezumi                          433       -0.195               4.4
+#>  4 Castor_fiber                             783       -0.19                6.9
+#>  5 Pteromys_volans                          670       -0.18                7  
+#>  6 Ellobius_talpinus                        536       -0.154              10.7
+#>  7 Myopus_schisticolor                     1339       -0.146              11.9
+#>  8 Cricetulus_barabensis                    636       -0.09                6.4
+#>  9 Spermophilus_pygmaeus                    883       -0.012               9.5
+#> 10 Microtus_agrestis                       2425        0.032              19.6
+#> 11 Meriones_unguiculatus                   1239        0.065              12  
+#> 12 Marmota_himalayana                      2941        0.083              25.8
+#> 13 Rattus_norvegicus                       6249        0.097              51.9
+#> 14 Rattus_rattus                           2989        0.114              24.5
+#> 15 Micromys_minutus                        3826        0.124              30.6
+#> 16 Arvicola_amphibius                      4566        0.149              36.1
+#> 17 Apodemus_agrarius                       3747        0.159              29.8
+#> 18 Marmota_baibacina                       5288        0.177              48.5
+#> 19 Lagurus_lagurus                         4967        0.224              41.2
+#> 20 Microtus_socialis                       7214        0.235              57.8
+#> 21 Apodemus_uralensis                      7470        0.264              61.6
+#> 22 Meriones_tamariscinus                   9323        0.281              74.1
+#> 23 Dryomys_nitedula                        9506        0.282              79.8
+#> 24 Rhombomys_opimus                        7929        0.295              66  
+#> 25 Meriones_meridianus                    11056        0.314              86.5
+#> 26 Mus_musculus                           13204        0.403              99.5
+```
+
+Nine of the 26 come out negative, holding between 0.4% and 17% of the region
+at their best slice. They are edge populations, and a percent change computed
+on an edge is a statement about the threshold.
+
+
+``` r
+traj <- res$species |>
+  group_by(species) |>
+  filter(min(focus_suit_margin) > 0) |>
+  mutate(ref = stats::median(focus_cells),
+         pct = 100 * (focus_cells - ref) / ref) |>
+  ungroup() |>
+  filter(ref > 0)
 
 # Reservoir hosts for plague in this region, from the literature rather than
 # from anything computed here.
 RESERVOIRS <- c("Marmota_baibacina", "Marmota_himalayana",
                 "Meriones_meridianus", "Lagurus_lagurus", "Rhombomys_opimus")
 
-cutoff <- stats::quantile(growth$growth_pct, 0.9, na.rm = TRUE)
+# Net change across the series, measured two ways. `endpoint` is the youngest
+# slice against the oldest; `robust` compares the median of the three oldest
+# slices with the median of the three youngest, so a single flickering century
+# at either end cannot set the answer. Where they disagree, the endpoint
+# version is the one leaning on one slice.
+growth <- traj |>
+  group_by(species) |>
+  arrange(time, .by_group = TRUE) |>
+  summarise(
+    endpoint = 100 * (dplyr::last(focus_cells) - dplyr::first(focus_cells)) /
+      dplyr::first(focus_cells),
+    robust   = 100 * (stats::median(utils::tail(focus_cells, 3)) -
+                        stats::median(utils::head(focus_cells, 3))) /
+      stats::median(utils::head(focus_cells, 3)),
+    .groups  = "drop"
+  ) |>
+  mutate(reservoir = species %in% RESERVOIRS) |>
+  arrange(desc(robust))
 
-traj <- traj |>
-  left_join(growth, by = "species") |>
-  mutate(
-    top_grower = growth_pct >= cutoff,
-    reservoir  = species %in% RESERVOIRS,
-    # An asterisk on the panel strip marks a reservoir host, so the two
-    # encodings stay separate: colour is what the model found, the asterisk is
-    # what was known beforehand.
-    panel = paste0(species, ifelse(reservoir, " *", ""))
-  )
-
-growth |>
-  arrange(desc(growth_pct)) |>
-  mutate(reservoir = species %in% RESERVOIRS,
-         top_10pct = growth_pct >= cutoff) |>
-  print(n = Inf)
-#> # A tibble: 32 × 4
-#>    species                   growth_pct reservoir top_10pct
-#>    <chr>                          <dbl> <lgl>     <lgl>    
-#>  1 Marmota_baibacina            30.0    TRUE      TRUE     
-#>  2 Microtus_socialis            10.5    FALSE     TRUE     
-#>  3 Marmota_himalayana            8.53   TRUE      TRUE     
-#>  4 Marmota_sibirica              8.13   FALSE     TRUE     
-#>  5 Castor_fiber                  7.88   FALSE     FALSE    
-#>  6 Marmota_bobak                 7.56   FALSE     FALSE    
-#>  7 Lagurus_lagurus               6.88   TRUE      FALSE    
-#>  8 Bandicota_bengalensis         6.28   FALSE     FALSE    
-#>  9 Microtus_agrestis             6.00   FALSE     FALSE    
-#> 10 Lasiopodomys_brandtii         5.78   FALSE     FALSE    
-#> 11 Spermophilus_pygmaeus         4.79   FALSE     FALSE    
-#> 12 Meriones_tamariscinus         4.23   FALSE     FALSE    
-#> 13 Rhombomys_opimus              4.07   TRUE      FALSE    
-#> 14 Myopus_schisticolor           3.77   FALSE     FALSE    
-#> 15 Meriones_crassus              3.53   FALSE     FALSE    
-#> 16 Apodemus_uralensis            2.13   FALSE     FALSE    
-#> 17 Cricetulus_barabensis         2.04   FALSE     FALSE    
-#> 18 Meriones_meridianus           1.06   TRUE      FALSE    
-#> 19 Arvicola_amphibius            0.408  FALSE     FALSE    
-#> 20 Pteromys_volans               0.0397 FALSE     FALSE    
-#> 21 Rattus_norvegicus            -0.0996 FALSE     FALSE    
-#> 22 Sicista_subtilis             -0.238  FALSE     FALSE    
-#> 23 Phodopus_sungorus            -0.448  FALSE     FALSE    
-#> 24 Meriones_unguiculatus        -0.753  FALSE     FALSE    
-#> 25 Mus_musculus                 -0.912  FALSE     FALSE    
-#> 26 Rattus_rattus                -1.75   FALSE     FALSE    
-#> 27 Apodemus_agrarius            -1.95   FALSE     FALSE    
-#> 28 Micromys_minutus             -3.06   FALSE     FALSE    
-#> 29 Dryomys_nitedula             -3.43   FALSE     FALSE    
-#> 30 Rattus_tanezumi              -5.60   FALSE     FALSE    
-#> 31 Allocricetulus_eversmanni   -10.6    FALSE     FALSE    
-#> 32 Ellobius_talpinus           -14.8    FALSE     FALSE
+growth |> print(n = Inf)
+#> # A tibble: 17 × 4
+#>    species               endpoint  robust reservoir
+#>    <chr>                    <dbl>   <dbl> <lgl>    
+#>  1 Microtus_agrestis       9.07    13.6   FALSE    
+#>  2 Apodemus_uralensis     13.5     12.0   FALSE    
+#>  3 Rattus_rattus           8.84     8.51  FALSE    
+#>  4 Rhombomys_opimus       10.7      1.99  TRUE     
+#>  5 Dryomys_nitedula       12.2      1.91  FALSE    
+#>  6 Microtus_socialis       7.99     1.63  FALSE    
+#>  7 Meriones_tamariscinus   3.83     1.18  FALSE    
+#>  8 Marmota_himalayana      0.0368   0.588 TRUE     
+#>  9 Mus_musculus            0.242    0.121 FALSE    
+#> 10 Arvicola_amphibius     -7.60    -0.718 FALSE    
+#> 11 Lagurus_lagurus         0.465   -0.950 TRUE     
+#> 12 Meriones_meridianus     1.69    -1.54  TRUE     
+#> 13 Apodemus_agrarius      -9.50    -2.19  FALSE    
+#> 14 Micromys_minutus       -7.95    -2.80  FALSE    
+#> 15 Rattus_norvegicus     -10.1     -3.04  FALSE    
+#> 16 Meriones_unguiculatus -32.0     -8.47  FALSE    
+#> 17 Marmota_baibacina      -3.41   -11.4   TRUE
 ```
 
-Two annotations, kept deliberately independent. Colour marks the upper tenth
-of species by net growth from 850 to 1850 -- a property of the model output.
-The asterisk marks species independently known as plague reservoirs -- a
-property of the literature. Whether the two coincide is then something the
-figure can show rather than something its construction has assumed.
+The panels below are drawn in one colour. An earlier version coloured the
+upper tenth by net growth, which was a mistake twice over. It ranked on the
+endpoint measure, so it marked species whose first or last century happened to
+sit high -- *Dryomys nitedula* was coloured as a top grower at +12.2% endpoint
+against +1.9% robust. And before the niche screen the ranking was led by
+species with a marginal regional presence, because a small sliver moves
+proportionally most: *Castor fiber* topped it while holding 2-5% of the Tian
+Shan above its own threshold. With those two faults fixed the surviving
+assemblage spans about 25 percentage points end to end, which is too narrow a
+range for a decile cut to mean anything. The ranking is left in the table,
+where its size is visible, rather than drawn on the figure, where it would
+read as expansion.
 
-Two choices here are worth spelling out.
+Reservoir status is likewise a property of the literature and stays in the
+table, so whether it coincides with anything is read off the numbers rather
+than assumed by the figure's construction.
+
+Three choices here are worth spelling out.
+
+**Measured in the focus, not over the whole range.** An earlier version of this
+figure plotted `cells`, the study-extent count. That put four species on the
+page that never enter the Tian Shan, and made every remaining panel a
+continental trajectory labelled as a regional one. It also changed the answer,
+not just the framing: on `cells`, *Marmota baibacina* leads the series at +30%
+net growth and is the headline of the reservoir argument; on `focus_cells` it
+is the largest regional decliner of the screened set, its expansion having
+happened outside the Tian Shan. Any claim tied to this region has to be made
+on the regional column.
 
 **Percent change, not standard deviations.** An earlier version divided each
 delta by the standard deviation of that species' own deltas across the eleven
@@ -606,7 +762,7 @@ the present day; `res$species` retains `delta_from_present` for that.
 
 Time runs down the vertical axis, as in a stratigraphic column, so a century
 reads as a level rather than a position along a line. Each panel is one
-species; the grey vertical rule is no change from present, the red horizontal
+species; the grey vertical rule is that species' own median, the red horizontal
 rule is 1350 CE. Steps rather than lines, because a centennial slice is an
 interval, not an instant.
 
@@ -615,6 +771,25 @@ fluctuation in the series, plus five percentage points of margin. That keeps
 the scale tight enough to read while guaranteeing nothing is pushed off the
 panel -- a fixed window would have hidden whichever species happened to move
 most, which is exactly the species worth seeing.
+
+What that rule produces depends entirely on the screen in front of it. Without
+the niche screen the axis runs to 170, set by *Ellobius talpinus* alone, whose
+Tian Shan footprint goes 2, 1221, 260, 120, 1418 cells across consecutive
+slices while its range-wide count barely moves: the region sits below its
+threshold at every slice, so the trajectory is the cutoff flickering rather
+than a range responding. With the screen the axis is 38 and every panel is
+legible.
+
+That is the argument for screening on the niche rather than on how much a
+series jumps. A fold-change screen on `focus_cells` would have removed
+*Ellobius* -- it spans 709-fold -- but it catches only three of the nine
+negative-margin species, because a footprint can stay small without swinging.
+*Castor fiber* varies by less than two-fold and holds 2-5% of the region above
+its threshold; volatility passes it, the niche screen does not.
+
+What survives is an assemblage that is regionally stable. Nothing moves more
+than about 33% from its own millennial median, and the reservoir species move
+least of all.
 
 
 ``` r
@@ -628,9 +803,9 @@ traj |>
     axis_limit    = traj_lim
   )
 #> # A tibble: 1 × 4
-#>   points worst_species worst_pct axis_limit
-#>    <int> <chr>             <dbl>      <dbl>
-#> 1    352 Marmota_bobak      33.2         39
+#>   points worst_species         worst_pct axis_limit
+#>    <int> <chr>                     <dbl>      <dbl>
+#> 1    187 Meriones_unguiculatus        32         38
 ```
 
 
@@ -638,42 +813,40 @@ traj |>
 ggplot(traj, aes(y = time, x = pct, group = species)) +
   geom_vline(xintercept = 0, colour = "gray") +
   geom_hline(yintercept = 1350, colour = "red", linetype = "dashed") +
-  geom_step(aes(colour = top_grower), orientation = "y") +
-  scale_colour_manual(
-    values = c(`TRUE` = "#b2182b", `FALSE` = "grey25"),
-    labels = c(`TRUE` = "upper 10% by net growth", `FALSE` = "other"),
-    name = NULL
-  ) +
+  geom_step(orientation = "y", colour = "grey25") +
   scale_y_continuous(breaks = seq(850, 1850, by = 200)) +
-  facet_wrap(~panel, ncol = 5) +
+  facet_wrap(~species, ncol = 5) +
   coord_cartesian(xlim = c(-traj_lim, traj_lim)) +
-  labs(x = "Change from species median (%)", y = "Year CE",
-       title = "Range-size trajectories, per species",
-       subtitle = "Grey line: species millennial median. Asterisk: known plague reservoir") +
-  theme_bw() +
-  theme(legend.position = "bottom")
+  labs(x = "Change from Tian Shan median (%)", y = "Year CE",
+       title = "Tian Shan range-size trajectories, per species",
+       subtitle = "Grey line: species millennial median. Red line: 1350 CE") +
+  theme_bw()
 ```
 
-![plot of chunk trajectories](tianshan-trajectories-1.png)
+![plot of chunk trajectories](tianshan-trajectories-1.svg)
 
-A single species at readable size, with every slice labelled:
+A single species at readable size, with every slice labelled. The shared axis
+exists so panels can be compared with each other; one species on its own has
+nothing to be compared against, so this figure takes its own limit rather than
+inheriting a scale set by *Ellobius*.
 
 
 ``` r
-traj |>
-  filter(species == "Marmota_baibacina") |>
-  ggplot(aes(y = time, x = pct)) +
+one_sp <- traj |> filter(species == "Marmota_baibacina")
+one_lim <- ceiling(max(abs(one_sp$pct), na.rm = TRUE)) + 5
+
+ggplot(one_sp, aes(y = time, x = pct)) +
   geom_vline(xintercept = 0, colour = "gray") +
   geom_hline(yintercept = 1350, colour = "red", linetype = "dashed") +
   geom_step(orientation = "y", linewidth = 1.3) +
   scale_y_continuous(breaks = seq(850, 1850, by = 100)) +
-  coord_cartesian(xlim = c(-traj_lim, traj_lim)) +
-  labs(x = "Change from species median (%)", y = "Year CE") +
-  ggtitle("Marmota_baibacina") +
+  coord_cartesian(xlim = c(-one_lim, one_lim)) +
+  labs(x = "Change from Tian Shan median (%)", y = "Year CE") +
+  ggtitle("Marmota_baibacina, Tian Shan only") +
   theme_bw()
 ```
 
-![plot of chunk focus-species](tianshan-focus-species-1.png)
+![plot of chunk focus-species](tianshan-focus-species-1.svg)
 
 ## Does the fitting dataset matter?
 
@@ -735,7 +908,7 @@ bind_rows(
   theme(legend.position = "bottom")
 ```
 
-![plot of chunk chelsa-plot](tianshan-chelsa-plot-1.png)
+![plot of chunk chelsa-plot](tianshan-chelsa-plot-1.svg)
 
 The two runs achieve near-identical fit quality, and disagree anyway:
 
@@ -786,6 +959,9 @@ moves.
 
 Replicating all 32 species is expensive, so this is one species. `cells_sd` is
 the standard deviation of that species' suitable-cell count across replicates.
+This section stays on the study-extent column: replicates measure how much
+redrawing the sample moves the fitted model, which is a property of the fit
+over the region it was fitted on, not of the Tian Shan clip of it.
 
 
 ``` r
@@ -890,38 +1066,43 @@ sessionInfo()
 #> [4] testthat_3.3.2     
 #> 
 #> loaded via a namespace (and not attached):
-#>  [1] s2_1.1.11                     utf8_1.2.6                   
-#>  [3] generics_0.1.4                class_7.3-24                 
-#>  [5] shape_1.4.6.1                 KernSmooth_2.23-27           
-#>  [7] modEvA_3.45                   lattice_0.23-1               
-#>  [9] effectsize_1.0.3              magrittr_2.0.5               
-#> [11] evaluate_1.0.5                grid_4.6.1                   
-#> [13] RColorBrewer_1.1-3            iterators_1.0.14             
-#> [15] rnaturalearth_1.2.0           pkgload_1.5.3                
-#> [17] foreach_1.5.2                 rprojroot_2.1.1              
-#> [19] glmnet_5.0                    Matrix_1.7-6                 
-#> [21] pkgbuild_1.4.8                e1071_1.7-17                 
-#> [23] brio_1.1.5                    DBI_1.3.0                    
-#> [25] survival_3.8-9                scales_1.4.0                 
-#> [27] codetools_0.2-20              cli_3.6.6                    
-#> [29] rlang_1.2.0                   units_1.0-1                  
-#> [31] splines_4.6.1                 withr_3.0.2                  
-#> [33] otel_0.2.0                    rnaturalearthhires_1.0.0.9000
-#> [35] datawizard_1.3.1              tools_4.6.1                  
-#> [37] bayestestR_0.18.1             vctrs_0.7.3                  
-#> [39] R6_2.6.1                      proxy_0.4-29                 
-#> [41] lifecycle_1.0.5               classInt_0.4-11              
-#> [43] insight_1.5.2                 pkgconfig_2.0.3              
-#> [45] desc_1.4.3                    terra_1.9-34                 
-#> [47] pillar_1.11.1                 gtable_0.3.6                 
-#> [49] glue_1.8.1                    Rcpp_1.1.2                   
-#> [51] sf_1.1-2                      rnaturalearthdata_1.0.0.9000 
-#> [53] xfun_0.60                     tibble_3.3.1                 
-#> [55] tidyselect_1.2.1              parameters_0.29.2            
-#> [57] knitr_1.51                    farver_2.1.2                 
-#> [59] labeling_0.4.3                wk_0.9.5                     
-#> [61] maxnet_0.1.4                  compiler_4.6.1               
-#> [63] S7_0.2.2
+#>  [1] gtable_0.3.6                  shape_1.4.6.1                
+#>  [3] bayestestR_0.18.1             xfun_0.60                    
+#>  [5] devtools_2.5.2                insight_1.5.2                
+#>  [7] maxnet_0.1.4                  lattice_0.23-1               
+#>  [9] vctrs_0.7.3                   tools_4.6.1                  
+#> [11] generics_0.1.4                datawizard_1.3.1             
+#> [13] tibble_3.3.1                  proxy_0.4-29                 
+#> [15] pkgconfig_2.0.3               Matrix_1.7-6                 
+#> [17] KernSmooth_2.23-27            RColorBrewer_1.1-3           
+#> [19] S7_0.2.2                      desc_1.4.3                   
+#> [21] lifecycle_1.0.5               compiler_4.6.1               
+#> [23] farver_2.1.2                  brio_1.1.5                   
+#> [25] terra_1.9-34                  codetools_0.2-20             
+#> [27] usethis_3.2.1                 class_7.3-24                 
+#> [29] glmnet_5.0                    modEvA_3.45                  
+#> [31] pillar_1.11.1                 ellipsis_0.3.3               
+#> [33] classInt_0.4-11               cachem_1.1.0                 
+#> [35] wk_0.9.5                      sessioninfo_1.2.4            
+#> [37] iterators_1.0.14              foreach_1.5.2                
+#> [39] rnaturalearthdata_1.0.0.9000  tidyselect_1.2.1             
+#> [41] sf_1.1-2                      purrr_1.2.2                  
+#> [43] labeling_0.4.3                splines_4.6.1                
+#> [45] rprojroot_2.1.1               fastmap_1.2.0                
+#> [47] rnaturalearth_1.2.0           grid_4.6.1                   
+#> [49] cli_3.6.6                     magrittr_2.0.5               
+#> [51] utf8_1.2.6                    survival_3.8-9               
+#> [53] pkgbuild_1.4.8                e1071_1.7-17                 
+#> [55] withr_3.0.2                   scales_1.4.0                 
+#> [57] otel_0.2.0                    rnaturalearthhires_1.0.0.9000
+#> [59] memoise_2.0.1                 evaluate_1.0.5               
+#> [61] knitr_1.51                    parameters_0.29.2            
+#> [63] s2_1.1.11                     rlang_1.2.0                  
+#> [65] Rcpp_1.1.2                    glue_1.8.1                   
+#> [67] DBI_1.3.0                     pkgload_1.5.3                
+#> [69] effectsize_1.0.3              rstudioapi_0.18.0            
+#> [71] R6_2.6.1                      fs_2.1.0                     
+#> [73] units_1.0-1
 ```
 
 ## Data sources

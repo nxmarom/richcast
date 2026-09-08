@@ -192,7 +192,7 @@ res$richness |>
   print(n = Inf)
 ```
 
-```{r richness-plot}
+```{r richness-plot, dev = "svg", fig.width = 7, fig.height = 4.5}
 res$richness |>
   filter(period != "present") |>
   ggplot(aes(time, mean_richness)) +
@@ -280,7 +280,7 @@ geo_layers <- function() {
 }
 ```
 
-```{r richness-maps, fig.width = 9, fig.height = 7.5}
+```{r richness-maps, dev = "png", dpi = 500, fig.width = 7.87, fig.height = 6.30}
 grid <- richness_grid(res)
 
 ggplot() +
@@ -293,7 +293,7 @@ ggplot() +
 
 A single slice against the present-day baseline, on a shared scale:
 
-```{r richness-map-pair, fig.width = 8, fig.height = 3.6}
+```{r richness-map-pair, dev = "png", dpi = 500, fig.width = 3.937, fig.height = 1.969}
 pair <- richness_grid(res, times = c("present", "1350")) |>
   mutate(time = factor(time, levels = c("present", "1350"),
                        labels = c("Present", "1350 CE")))
@@ -314,14 +314,14 @@ richness_surface(res, 1350)
 ## Species trajectories
 
 `res$species` carries one row per species per slice, with each range expressed
-as a suitable-cell count and differenced two ways.
+as a suitable-cell count over two different regions, each differenced two ways.
 
 One species across all eleven slices:
 
 ```{r species-head}
 res$species |>
   filter(species == "Marmota_baibacina") |>
-  select(time, cells, delta_from_previous, delta_from_present)
+  select(time, cells, focus_cells, delta_from_previous, delta_from_present)
 ```
 
 Both deltas are computed after sorting time numerically. Note the single `NA`
@@ -341,6 +341,54 @@ res$species |>
   )
 ```
 
+### Two geographies, and why the trajectories use the second
+
+`cells` is counted over each species' **study extent** -- its own range plus
+the fitting buffer -- because that is the region the model was fitted and
+projected over. For a widespread Eurasian rodent that is a continental number,
+and it moves for continental reasons. The richness curve above is a Tian Shan
+number. The two are not the same measurement, and a trajectory drawn from
+`cells` beside a richness curve drawn from the focus invites a comparison that
+does not hold.
+
+`focus_cells` closes that gap: the same projected range, clipped to the Tian
+Shan, on the same grid and with the same `touches` rule the richness surface
+uses. It is the column commensurable with `res$richness`.
+
+```{r occupancy}
+occupancy <- res$species |>
+  group_by(species) |>
+  summarise(
+    median_cells       = stats::median(cells),
+    median_focus_cells = stats::median(focus_cells),
+    ever_in_focus      = max(focus_cells) > 0,
+    .groups = "drop"
+  ) |>
+  arrange(median_focus_cells)
+
+occupancy |> print(n = Inf)
+```
+
+Two things fall out of that table.
+
+**Some species are not here at all.** Species are chosen by intersecting the
+focus expanded by `prefilter_buffer` -- eight degrees, which stretches the box
+to 60-95 degrees E and 31-54 degrees N -- so the run legitimately includes taxa
+that approach the Tian Shan without entering it. Four of the 32 have zero
+suitable cells inside the focus at every slice. They are real model output and
+they belong in `res$species`; they do not belong in a figure about this region,
+and before `focus_cells` existed there was nothing in the table to reveal that.
+
+```{r absent}
+occupancy |> filter(!ever_in_focus)
+```
+
+**The two counts are not on the same grid.** `cells` is counted on the climate
+grid, `focus_cells` on the 0.1-degree grid the richness surface is built at,
+so their ratio is not a fraction of range inside the focus. Compare each column
+against itself across slices, where the grid cancels; use area to compare one
+against the other.
+
 To compare species with very different range sizes, put each trajectory in
 units of its own standard deviation. Note that this divides by the SD without
 subtracting the mean: `scale()` would do both, which moves zero to *average
@@ -348,58 +396,106 @@ change across the series* while it still looks like *no change from present* --
 and if most slices were smaller than today, every taxon then appears to sit a
 full standard deviation above the line for purely arithmetic reasons.
 
-```{r traj-data}
-# Referenced to each species' own median across the series.
-traj <- res$species |>
-  group_by(species) |>
-  mutate(ref = stats::median(cells),
-         pct = 100 * (cells - ref) / ref) |>
-  ungroup() |>
-  filter(ref > 0)
+### Which species can carry a regional trajectory
 
-# Net growth across the series: how much larger the youngest slice is than the
-# oldest. Measured end to end rather than as a mean, so a species that expanded
-# steadily and one that merely ended high are not scored alike.
-growth <- traj |>
+`focus_cells` says how much of the Tian Shan a species holds. It does not say
+whether holding it means anything. A projected range is a threshold applied to
+a continuous surface: where the region sits well inside a species' modelled
+niche the cell count moves when the climate moves, and where it sits *at* the
+cutoff the count moves when anything does. Both produce plausible numbers that
+change between slices, and `focus_cells` alone cannot tell them apart.
+
+`focus_suit_margin` can. It is the ninetieth percentile of suitability inside
+the focus, less that species' own threshold, so a negative value means the
+region does not clear the cutoff even at its ninetieth percentile.
+
+```{r niche-screen}
+# How many grid cells the focus holds, so occupancy can be read as a share of
+# the region rather than as a bare count.
+focus_n <- res$richness$cells[1]
+
+niche <- res$species |>
   group_by(species) |>
   summarise(
-    growth_pct = 100 * (cells[which.max(time)] - cells[which.min(time)]) /
-      cells[which.min(time)],
+    median_focus_cells = stats::median(focus_cells),
+    worst_margin       = round(min(focus_suit_margin), 3),
+    best_pct_of_focus  = round(100 * max(focus_cells) / focus_n, 1),
     .groups = "drop"
-  )
+  ) |>
+  filter(median_focus_cells >= 100) |>
+  arrange(worst_margin)
+
+niche |> print(n = Inf)
+```
+
+Nine of the 26 come out negative, holding between 0.4% and 17% of the region
+at their best slice. They are edge populations, and a percent change computed
+on an edge is a statement about the threshold.
+
+```{r traj-data}
+traj <- res$species |>
+  group_by(species) |>
+  filter(min(focus_suit_margin) > 0) |>
+  mutate(ref = stats::median(focus_cells),
+         pct = 100 * (focus_cells - ref) / ref) |>
+  ungroup() |>
+  filter(ref > 0)
 
 # Reservoir hosts for plague in this region, from the literature rather than
 # from anything computed here.
 RESERVOIRS <- c("Marmota_baibacina", "Marmota_himalayana",
                 "Meriones_meridianus", "Lagurus_lagurus", "Rhombomys_opimus")
 
-cutoff <- stats::quantile(growth$growth_pct, 0.9, na.rm = TRUE)
+# Net change across the series, measured two ways. `endpoint` is the youngest
+# slice against the oldest; `robust` compares the median of the three oldest
+# slices with the median of the three youngest, so a single flickering century
+# at either end cannot set the answer. Where they disagree, the endpoint
+# version is the one leaning on one slice.
+growth <- traj |>
+  group_by(species) |>
+  arrange(time, .by_group = TRUE) |>
+  summarise(
+    endpoint = 100 * (dplyr::last(focus_cells) - dplyr::first(focus_cells)) /
+      dplyr::first(focus_cells),
+    robust   = 100 * (stats::median(utils::tail(focus_cells, 3)) -
+                        stats::median(utils::head(focus_cells, 3))) /
+      stats::median(utils::head(focus_cells, 3)),
+    .groups  = "drop"
+  ) |>
+  mutate(reservoir = species %in% RESERVOIRS) |>
+  arrange(desc(robust))
 
-traj <- traj |>
-  left_join(growth, by = "species") |>
-  mutate(
-    top_grower = growth_pct >= cutoff,
-    reservoir  = species %in% RESERVOIRS,
-    # An asterisk on the panel strip marks a reservoir host, so the two
-    # encodings stay separate: colour is what the model found, the asterisk is
-    # what was known beforehand.
-    panel = paste0(species, ifelse(reservoir, " *", ""))
-  )
-
-growth |>
-  arrange(desc(growth_pct)) |>
-  mutate(reservoir = species %in% RESERVOIRS,
-         top_10pct = growth_pct >= cutoff) |>
-  print(n = Inf)
+growth |> print(n = Inf)
 ```
 
-Two annotations, kept deliberately independent. Colour marks the upper tenth
-of species by net growth from 850 to 1850 -- a property of the model output.
-The asterisk marks species independently known as plague reservoirs -- a
-property of the literature. Whether the two coincide is then something the
-figure can show rather than something its construction has assumed.
+The panels below are drawn in one colour. An earlier version coloured the
+upper tenth by net growth, which was a mistake twice over. It ranked on the
+endpoint measure, so it marked species whose first or last century happened to
+sit high -- *Dryomys nitedula* was coloured as a top grower at +12.2% endpoint
+against +1.9% robust. And before the niche screen the ranking was led by
+species with a marginal regional presence, because a small sliver moves
+proportionally most: *Castor fiber* topped it while holding 2-5% of the Tian
+Shan above its own threshold. With those two faults fixed the surviving
+assemblage spans about 25 percentage points end to end, which is too narrow a
+range for a decile cut to mean anything. The ranking is left in the table,
+where its size is visible, rather than drawn on the figure, where it would
+read as expansion.
 
-Two choices here are worth spelling out.
+Reservoir status is likewise a property of the literature and stays in the
+table, so whether it coincides with anything is read off the numbers rather
+than assumed by the figure's construction.
+
+Three choices here are worth spelling out.
+
+**Measured in the focus, not over the whole range.** An earlier version of this
+figure plotted `cells`, the study-extent count. That put four species on the
+page that never enter the Tian Shan, and made every remaining panel a
+continental trajectory labelled as a regional one. It also changed the answer,
+not just the framing: on `cells`, *Marmota baibacina* leads the series at +30%
+net growth and is the headline of the reservoir argument; on `focus_cells` it
+is the largest regional decliner of the screened set, its expansion having
+happened outside the Tian Shan. Any claim tied to this region has to be made
+on the regional column.
 
 **Percent change, not standard deviations.** An earlier version divided each
 delta by the standard deviation of that species' own deltas across the eleven
@@ -433,7 +529,7 @@ the present day; `res$species` retains `delta_from_present` for that.
 
 Time runs down the vertical axis, as in a stratigraphic column, so a century
 reads as a level rather than a position along a line. Each panel is one
-species; the grey vertical rule is no change from present, the red horizontal
+species; the grey vertical rule is that species' own median, the red horizontal
 rule is 1350 CE. Steps rather than lines, because a centennial slice is an
 interval, not an instant.
 
@@ -442,6 +538,25 @@ fluctuation in the series, plus five percentage points of margin. That keeps
 the scale tight enough to read while guaranteeing nothing is pushed off the
 panel -- a fixed window would have hidden whichever species happened to move
 most, which is exactly the species worth seeing.
+
+What that rule produces depends entirely on the screen in front of it. Without
+the niche screen the axis runs to 170, set by *Ellobius talpinus* alone, whose
+Tian Shan footprint goes 2, 1221, 260, 120, 1418 cells across consecutive
+slices while its range-wide count barely moves: the region sits below its
+threshold at every slice, so the trajectory is the cutoff flickering rather
+than a range responding. With the screen the axis is 38 and every panel is
+legible.
+
+That is the argument for screening on the niche rather than on how much a
+series jumps. A fold-change screen on `focus_cells` would have removed
+*Ellobius* -- it spans 709-fold -- but it catches only three of the nine
+negative-margin species, because a footprint can stay small without swinging.
+*Castor fiber* varies by less than two-fold and holds 2-5% of the region above
+its threshold; volatility passes it, the niche screen does not.
+
+What survives is an assemblage that is regionally stable. Nothing moves more
+than about 33% from its own millennial median, and the reservoir species move
+least of all.
 
 ```{r traj-limits}
 traj_lim <- ceiling(max(abs(traj$pct), na.rm = TRUE)) + 5
@@ -455,39 +570,37 @@ traj |>
   )
 ```
 
-```{r trajectories, fig.width = 9, fig.height = 10}
+```{r trajectories, dev = "svg", fig.width = 9, fig.height = 10}
 ggplot(traj, aes(y = time, x = pct, group = species)) +
   geom_vline(xintercept = 0, colour = "gray") +
   geom_hline(yintercept = 1350, colour = "red", linetype = "dashed") +
-  geom_step(aes(colour = top_grower), orientation = "y") +
-  scale_colour_manual(
-    values = c(`TRUE` = "#b2182b", `FALSE` = "grey25"),
-    labels = c(`TRUE` = "upper 10% by net growth", `FALSE` = "other"),
-    name = NULL
-  ) +
+  geom_step(orientation = "y", colour = "grey25") +
   scale_y_continuous(breaks = seq(850, 1850, by = 200)) +
-  facet_wrap(~panel, ncol = 5) +
+  facet_wrap(~species, ncol = 5) +
   coord_cartesian(xlim = c(-traj_lim, traj_lim)) +
-  labs(x = "Change from species median (%)", y = "Year CE",
-       title = "Range-size trajectories, per species",
-       subtitle = "Grey line: species millennial median. Asterisk: known plague reservoir") +
-  theme_bw() +
-  theme(legend.position = "bottom")
+  labs(x = "Change from Tian Shan median (%)", y = "Year CE",
+       title = "Tian Shan range-size trajectories, per species",
+       subtitle = "Grey line: species millennial median. Red line: 1350 CE") +
+  theme_bw()
 ```
 
-A single species at readable size, with every slice labelled:
+A single species at readable size, with every slice labelled. The shared axis
+exists so panels can be compared with each other; one species on its own has
+nothing to be compared against, so this figure takes its own limit rather than
+inheriting a scale set by *Ellobius*.
 
-```{r focus-species, fig.width = 5, fig.height = 5}
-traj |>
-  filter(species == "Marmota_baibacina") |>
-  ggplot(aes(y = time, x = pct)) +
+```{r focus-species, dev = "svg", fig.width = 5, fig.height = 5}
+one_sp <- traj |> filter(species == "Marmota_baibacina")
+one_lim <- ceiling(max(abs(one_sp$pct), na.rm = TRUE)) + 5
+
+ggplot(one_sp, aes(y = time, x = pct)) +
   geom_vline(xintercept = 0, colour = "gray") +
   geom_hline(yintercept = 1350, colour = "red", linetype = "dashed") +
   geom_step(orientation = "y", linewidth = 1.3) +
   scale_y_continuous(breaks = seq(850, 1850, by = 100)) +
-  coord_cartesian(xlim = c(-traj_lim, traj_lim)) +
-  labs(x = "Change from species median (%)", y = "Year CE") +
-  ggtitle("Marmota_baibacina") +
+  coord_cartesian(xlim = c(-one_lim, one_lim)) +
+  labs(x = "Change from Tian Shan median (%)", y = "Year CE") +
+  ggtitle("Marmota_baibacina, Tian Shan only") +
   theme_bw()
 ```
 
@@ -520,7 +633,7 @@ comparison <- inner_join(
 comparison |> mutate(difference = chelsa_fit - worldclim_fit)
 ```
 
-```{r chelsa-plot, fig.width = 7, fig.height = 4}
+```{r chelsa-plot, dev = "svg", fig.width = 7, fig.height = 4}
 bind_rows(
   transmute(comparison, time, fitted_on = "WorldClim 1985", mean_richness = worldclim_fit),
   transmute(comparison, time, fitted_on = "CHELSA 1950",    mean_richness = chelsa_fit)
@@ -576,6 +689,9 @@ moves.
 
 Replicating all 32 species is expensive, so this is one species. `cells_sd` is
 the standard deviation of that species' suitable-cell count across replicates.
+This section stays on the study-extent column: replicates measure how much
+redrawing the sample moves the fitted model, which is a property of the fit
+over the region it was fitted on, not of the Tian Shan clip of it.
 
 ```{r replicate-demo}
 one <- run_hindcast_series(
