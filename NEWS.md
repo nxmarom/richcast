@@ -1,4 +1,40 @@
-# richcast 0.0.0.9000 (development)
+# richcast (development)
+
+## Revised and simplified model
+
+* **Input** is IUCN range polygons from a folder: `iucn_folder()` reads every
+  shapefile under it (e.g. `bovid_IUCN/`, `cervid_IUCN/`, `equid_IUCN/`), and
+  `build_taxon_db()` accepts a folder path directly. Only polygons coded as
+  extant (`PRESENCE` 1-3) and native or reintroduced (`ORIGIN` 1-2) are kept
+  by default.
+* **`fit_sdm()` is now an ensemble** of a random forest (`ranger`, balanced
+  down-sampling) and MaxEnt (`maxnet`), averaged with equal weight. It trains
+  on 100 pseudo-presences from inside the range polygon and 1000 background
+  points, over a study extent of the range's bounding box plus 30% of its
+  diagonal. The `p10` threshold is applied to the ensemble.
+* **Metrics**: AUC and the continuous Boyce index for each member and the
+  ensemble, on a 25% hold-out, in `$metrics` and in the series' `$models`.
+* **Regions**: `region()` takes a preset (`"europe"`, `"asia"`,
+  `"middle_east"`, `"africa"`, `"north_america"`, `"south_america"`) or a
+  box, replacing `focus_box()`, `focus_global()` and `focus_polygon()`.
+* **Species selection**: `run_hindcast_series()` trains only species whose
+  present range lies within 10 degrees of the region (`species_near()`).
+* **Richness** is stacked from the models' own rasters on the climate grid,
+  with an `expected` layer (the sum of suitabilities) beside the thresholded
+  count.
+* **`richness_at()`** predicts richness and lists the expected species at any
+  coordinate and time.
+
+## Removed
+
+* GBIF occurrences and point ranges, replicate fits (`fit_replicates()`,
+  `project_replicates()`), `ensemble_series()`, `gaussian_window()`,
+  subregions, the per-species focus-margin columns, the `min_cells`
+  resolvability screen, `richness_stack()` and `richness_stats()`, and the
+  `tss`/`mtp` thresholds. `modEvA` and `rgbif` are no longer used.
+* The precomputed Tian Shan vignette, which documented the previous method.
+
+# richcast 0.0.0.9000 (earlier development)
 
 Extracted and generalised from the Tian Shan rodent-richness pipeline.
 

@@ -1,6 +1,6 @@
 citHeader(
   "To cite richcast, cite the package below plus every data source you used: ",
-  "the IUCN Red List version, any GBIF download DOI, the pastclim climate ",
+  "the IUCN Red List version, the pastclim climate ",
   "reconstruction, and Ecke et al. (2022) if you used rodent_traits."
 )
 

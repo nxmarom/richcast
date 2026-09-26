@@ -9,9 +9,9 @@
 
 **Hindcast species distributions and assemblage richness through time.**
 
-`richcast` projects species distribution models onto palaeoclimate
-reconstructions across a series of time slices, then summarises the resulting
-assemblage richness for a region of interest. It is taxon-agnostic: rodents,
+`richcast` fits a species distribution model for every species near a region,
+projects each onto palaeoclimate reconstructions across a series of time
+slices, and stacks the results into richness surfaces for that region. It is taxon-agnostic: rodents,
 ungulates, carnivorans and anything else with range data and a climate niche
 go through the same functions.
 
@@ -23,15 +23,14 @@ remotes::install_github("nxmarom/richcast", build_vignettes = TRUE)
 ```
 
 `build_vignettes = TRUE` is worth the extra minute. Without it the package
-installs correctly and nothing errors, but `vignette("tianshan")` finds
-nothing — the vignettes are simply absent, silently. They are precomputed, so
-building them only renders the stored output; it does not re-run any models.
+installs correctly and nothing errors, but `vignette("richcast")` finds
+nothing — the vignettes are simply absent, silently.
 
 `pak::pak("nxmarom/richcast")` and `devtools::install_github()` also work and
 have the same default.
 
 Some dependencies are not on CRAN. `rnaturalearthhires` lives on r-universe and
-is only needed for `focus_global(scale = "large")`, which degrades to medium
+is only needed for a high-resolution land mask, which degrades to medium
 resolution with a warning when it is absent:
 
 ```r
@@ -42,10 +41,9 @@ install.packages("rnaturalearthhires", repos = "https://ropensci.r-universe.dev"
 
 `richcast` bundles **no range data and no climate data**, by design.
 
-* **Ranges** are supplied by you, through one of three backends:
-  `iucn_shapefile()` for a Red List spatial download, `gbif_occurrences()` for
-  point records fetched live, or `sf_polygons()` for any `sf` object you
-  already hold.
+* **Ranges** are IUCN Red List polygons you download yourself. Unpack the
+  downloads side by side in one folder and point `iucn_folder()` at it;
+  `sf_polygons()` takes any polygon `sf` object you already hold.
 * **Climate** is retrieved through [`pastclim`](https://evolecolgroup.github.io/pastclim/),
   which handles WorldClim and CHELSA-TraCE21k downloads and caching.
 * **Traits** for rodents ship with the package as `rodent_traits`, from
@@ -60,68 +58,67 @@ any file this package might ship, so `iucn_shapefile()` points at a download
 you make yourself, under your own acceptance of those terms. Cite the version
 you used.
 
-If you want a pipeline that runs with no manual downloads at all, use the GBIF
-backend instead.
-
 ## Quick start
 
 ```r
 library(richcast)
 
-# 1. Assemble a taxon database: your ranges + a trait table
-db <- build_taxon_db(
-  ranges = iucn_shapefile("~/iucn_rodentia/data_0.shp"),
-  traits = rodent_traits
-)
-#> i Reading 'data_0.shp'
-#> i Dissolving 3090 features into 2345 species ranges.
-#> i Trait join: 400/2345 species matched, 1945 with NA traits.
+# 1. Ranges: every IUCN shapefile under a folder, dissolved per species
+db <- build_taxon_db(iucn_folder("UngulatePolygons"))
 
-# 2. Narrow to the taxa you care about
-db <- filter_taxa(db, !is.na(S_index))
-#> i Filter kept 248/2345 species (2097 removed).
-
-# 3. Prepare climate slices once (slow; resumable)
+# 2. Climate slices, prepared once (slow; resumable)
 clim <- prepare_climate(
-  path   = "climate/eurasia",
+  path   = "climate/beyer",
   vars   = c("bio01", "bio04", "bio05", "bio06",
              "bio12", "bio15", "bio16", "bio17"),
-  times  = seq(850, 1850, by = 100),
-  extent = c(-15, 180, 10, 82)
+  times  = bp_to_ce(seq(-2000, -20000, by = -2000)),
+  extent = c(-30, 80, -40, 75),
+  dataset_past = "Beyer2020", agg_past = 1
 )
-#> v 12 slices share one grid (0.1667 x 0.1667 deg).
 
-# 4. Fit, project and summarise
+# 3. Fit, project and stack, for a preset region or your own box
 res <- run_hindcast_series(
   db, clim,
-  times      = seq(850, 1850, by = 100),
-  focus      = focus_box(c(68, 87, 39, 46), label = "Tian Shan"),
-  subregions = list(karadja = focus_box(c(74.38, 74.99, 42.58, 43.03)))
+  times  = bp_to_ce(seq(-2000, -20000, by = -2000)),
+  region = region("middle_east")        # or region(c(xmin, xmax, ymin, ymax))
 )
 
-res$richness   # one row per slice: mean, median, max, variance
-res$species    # per species per slice: cells over the study extent,
-               # focus_cells over the focus, each differenced two ways
-res$models     # AUC, threshold, sample sizes
+res$richness   # one row per slice: mean/median/max richness, mean expected
+res$models     # AUC and Boyce for the RF, MaxEnt and the ensemble
+res$species    # suitable cells per species per slice
+
+# 4. Richness, and the expected species, at a coordinate
+richness_at(res, lon = 35.5, lat = 33, time = c("present", -4050),
+            climate = clim)
 ```
 
-Each species is fitted **once** and projected onto every slice, so the cost
-scales with species, not with species x slices. Individual pieces —
-`fit_sdm()`, `project_sdm()`, `richness_stack()`, `richness_stats()` — work on
-their own if you want a different loop.
+## The model
 
-Time-averaging across chronological uncertainty is one argument:
+For each species:
 
-```r
-res <- run_hindcast_series(..., window = gaussian_window())
-```
+* **Study extent**: the range polygon's bounding box, widened by 30% of its
+  diagonal.
+* **Training points**: 100 pseudo-presences sampled inside the range polygon,
+  1000 background points from the rest of the extent.
+* **Ensemble**: a random forest (`ranger`, balanced down-sampling) and MaxEnt
+  (`maxnet`), averaged with equal weight.
+* **Threshold**: `p10`, the tenth percentile of ensemble suitability at the
+  training presences.
+* **Evaluation**: AUC and the continuous Boyce index for each member and the
+  ensemble, on a 25% hold-out.
+
+When hindcasting a region, only species whose present-day range lies within 10
+degrees of it are trained (`species_near()`). Each is fitted once and projected
+onto every slice. Preset regions are `"europe"`, `"asia"`, `"middle_east"`,
+`"africa"`, `"north_america"` and `"south_america"` (`region_presets` has their
+boxes).
+
+Every slice yields two surfaces: `richness`, the number of species above their
+threshold, and `expected`, the sum of their suitabilities.
 
 ## Vignettes
 
 * `vignette("richcast")` — the API, on synthetic data you can run yourself.
-* `vignette("tianshan")` — a worked analysis: 32 rodent species across the
-  Tian Shan, 850–1850 CE, with plague-reservoir trajectories against the
-  fourteenth-century pandemic.
 
 ## Why the ranges get dissolved
 
@@ -138,7 +135,7 @@ discriminate the species from itself.
 ## Citation
 
 If you use `richcast`, please cite the package plus the data sources you
-actually used — the IUCN Red List version, GBIF download DOI, the relevant
+actually used — the IUCN Red List version, the relevant
 `pastclim` climate reconstruction, and Ecke et al. (2022) if you used
 `rodent_traits`. `citation("richcast")` lists them.
 

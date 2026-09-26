@@ -10,18 +10,15 @@ richness_grid(series, times = NULL, drop_na = TRUE)
 \item{series}{A \code{richcast_series}.}
 
 \item{times}{Which slices to include. Defaults to every hindcast slice;
-pass \code{"present"} to include the present-day baseline.}
+include \code{"present"} to add the present day.}
 
-\item{drop_na}{Drop cells outside the focus mask.}
+\item{drop_na}{Drop cells no model covered.}
 }
 \value{
-A tibble with \code{x}, \code{y}, \code{time} and \code{richness}.
+A tibble with \code{x}, \code{y}, \code{time}, \code{richness} and \code{expected}.
 }
 \description{
-Long-format cell values for every slice, ready for a faceted heatmap. One
-row per cell per time slice, so a focus of a few tens of thousands of cells
-across a dozen slices is comfortable and a continental one is not -- crop
-the focus, or select \code{times}, before reaching for this on a large region.
+Long-format cell values for every slice, ready for a faceted map.
 }
 \examples{
 \dontrun{

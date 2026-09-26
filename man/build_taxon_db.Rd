@@ -14,8 +14,9 @@ build_taxon_db(
 )
 }
 \arguments{
-\item{ranges}{A range source from \code{\link[=iucn_shapefile]{iucn_shapefile()}}, \code{\link[=sf_polygons]{sf_polygons()}} or
-\code{\link[=gbif_occurrences]{gbif_occurrences()}}.}
+\item{ranges}{A range source from \code{\link[=iucn_folder]{iucn_folder()}}, \code{\link[=iucn_shapefile]{iucn_shapefile()}} or
+\code{\link[=sf_polygons]{sf_polygons()}}; a bare \code{sf} object; or a folder path, which is read with
+\code{\link[=iucn_folder]{iucn_folder()}} defaults.}
 
 \item{traits}{Optional data frame of species attributes, e.g.
 \link{rodent_traits}. Joined on normalised species name.}
@@ -23,7 +24,7 @@ build_taxon_db(
 \item{trait_species_col}{Name of the species column in \code{traits}.}
 
 \item{dissolve}{Logical. Union multiple features of the same species into a
-single geometry. Defaults to \code{TRUE}; ignored for point sources.}
+single geometry. Defaults to \code{TRUE}.}
 
 \item{crs}{Target coordinate reference system. Defaults to EPSG:4326.}
 
@@ -69,5 +70,5 @@ ranges <- sf::st_sf(
 build_taxon_db(sf_polygons(ranges), quiet = TRUE)
 }
 \seealso{
-\code{\link[=iucn_shapefile]{iucn_shapefile()}}, \code{\link[=gbif_occurrences]{gbif_occurrences()}}, \link{rodent_traits}
+\code{\link[=iucn_folder]{iucn_folder()}}, \link{rodent_traits}
 }

@@ -230,7 +230,7 @@ check_climate_products <- function(climate, quiet = FALSE) {
       "Present-day and palaeoclimate slices come from different products.",
       "x" = "present: {.val {present_ds}}; slices: {.val {past_ds}}.",
       "i" = "Every {.code delta_from_present} then contains the step between the two products, which is species-specific in sign and does not cancel.",
-      "i" = "Either prepare the present slice from {.val {past_ds}}, or set {.arg baseline} in {.fn run_hindcast_series} to a slice from the same product."
+      "i" = "Prepare the present slice from {.val {past_ds}} so that fitting and projection share one product."
     ))
     return(invisible(FALSE))
   }

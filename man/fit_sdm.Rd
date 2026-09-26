@@ -9,11 +9,12 @@ fit_sdm(
   species,
   climate,
   predictors = NULL,
-  nsample = 1000,
-  buffer = 0.15,
-  buffer_range = c(1, 8),
-  extent = NULL,
+  n_presence = 100,
+  n_background = 1000,
+  buffer = 0.3,
   threshold = "p10",
+  test_frac = 0.25,
+  num_trees = 500,
   seed = 123,
   land = NULL,
   quiet = FALSE
@@ -29,47 +30,20 @@ fit_sdm(
 \item{predictors}{Character vector of climate variables. \code{NULL} uses every
 variable the present-day slice provides.}
 
-\item{nsample}{Number of presence and background points to draw. Measured
-across 32 rodent species under the default \code{p10} threshold, raising this
-from 100 to 1000 cut the worst-case coefficient of variation in modelled
-range size from 28.6\% to 5.5\%, at negligible cost.
+\item{n_presence}{Number of pseudo-presences drawn inside the range.}
 
-It buys nothing once the range runs out of cells. Sampling is with
-replacement, so a range covering \code{k} grid cells yields \code{k} distinct
-climate vectors however large \code{nsample} is; beyond that point raising it
-only duplicates rows. The returned \code{range_cells} reports \code{k}, and
-\code{\link[=run_hindcast_series]{run_hindcast_series()}} screens on it.}
+\item{n_background}{Number of background points drawn outside it.}
 
-\item{buffer}{Study-extent buffer around the range, as a proportion of the
-range's bounding-box diagonal.}
+\item{buffer}{Study-extent buffer around the range's bounding box, as a
+proportion of the box's diagonal.}
 
-\item{buffer_range}{Minimum and maximum buffer in degrees, clamping \code{buffer}.}
+\item{threshold}{\code{"p10"}, or a fixed number in \verb{(0, 1)}.}
 
-\item{extent}{Optional fixed \code{c(xmin, xmax, ymin, ymax)} study extent,
-overriding \code{buffer}. Fitting on the species' full range is usually
-preferable to fitting on the study region, since a truncated extent
-truncates the estimated niche.}
+\item{test_frac}{Share of presences and background held out for evaluation.}
 
-\item{threshold}{Binarisation rule. \code{"tss"} maximises the true skill
-statistic; \code{"p10"} uses the tenth percentile of predictions at training
-presences; \code{"mtp"} uses the minimum prediction at a training presence; or
-supply a number in \verb{(0, 1)} for a fixed cutoff.
+\item{num_trees}{Trees in the random forest.}
 
-The choice matters more than it looks. \code{"tss"} is referenced to the
-background, so a wider background makes discrimination easier and pushes
-the cutoff up: measured across eight ungulates, widening the background
-buffer moved the median TSS threshold from 0.78 to 0.86 and the median
-predicted range from 18 cells to 2. \code{"p10"} and \code{"mtp"} are referenced to
-the presences instead, so they do not tighten as the background grows.
-
-This is a sensitivity, not a defect in TSS as such. On a narrowly scoped
-background the two families can agree closely -- an independent ensemble
-over the same region found a TSS optimum of 0.287 against p10's 0.242,
-correlating at 0.987. It bites here because richcast's study extent is
-each species' full range plus a buffer, which for a widely distributed
-species is continental.}
-
-\item{seed}{Random seed for point sampling.}
+\item{seed}{Random seed for sampling, the hold-out split and the forest.}
 
 \item{land}{Optional \code{sf}/\code{sfc} land outline used to mask predictions and
 restrict the background to land. Defaults to Natural Earth at medium
@@ -78,21 +52,63 @@ resolution.}
 \item{quiet}{Suppress progress messages.}
 }
 \value{
-A \code{richcast_sdm}. \code{range_cells} records how many grid cells carrying
-climate the range covers -- the number of distinct training points
-available, and the ceiling on what \code{nsample} can deliver.
+A \code{richcast_sdm}. \code{metrics} holds AUC and Boyce for \code{maxent}, \code{rf}
+and \code{ensemble}; \code{range_cells} is the number of grid cells with climate the
+range covers.
 }
 \description{
-Fits a MaxEnt-style model (via \pkg{maxnet}) for one species against
-present-day climate, and returns an object that \code{\link[=project_sdm]{project_sdm()}} can push
-onto any number of palaeoclimate slices.
+Fits an ensemble of a random forest (via \pkg{ranger}) and MaxEnt (via
+\pkg{maxnet}) for one species against present-day climate, and returns an
+object that \code{\link[=project_sdm]{project_sdm()}} can push onto any number of palaeoclimate
+slices.
 }
-\details{
-Presence and background points are drawn from within and outside the
-species' range polygon respectively, both restricted to a study extent
-buffered around the range. When \code{db} carries point geometry (from
-\code{\link[=gbif_occurrences]{gbif_occurrences()}}), the occurrences are used directly and only the
-background is sampled.
+\section{Training data}{
+The study extent is the range polygon's bounding box, widened on every side
+by \code{buffer} times its diagonal (30\% by default). Inside it, \code{n_presence}
+pseudo-presences are drawn from grid cells inside the range polygon and
+\code{n_background} background points from land cells outside it, both without
+replacement. A range covering fewer cells than \code{n_presence} contributes
+every cell it has; \code{range_cells} on the result says how many that was.
+}
+
+\section{Members and ensemble}{
+\itemize{
+\item \strong{MaxEnt}: \code{maxnet::maxnet()} with default features and \code{regmult = 1},
+predicted on the cloglog scale.
+\item \strong{Random forest}: a probability forest from \code{ranger::ranger()}, with each
+tree drawn from an equal number of presences and background points
+(balanced down-sampling), which keeps the 1:10 class imbalance from
+flattening predicted probabilities toward zero.
+\item \strong{Ensemble}: the unweighted mean of the two, so it is also on \verb{[0, 1]}.
+}
+
+The presence/absence threshold is applied to the ensemble only. The default
+\code{"p10"} is the tenth percentile of ensemble predictions at the training
+presences: it tolerates 10\% omission, and being referenced to the presences
+it does not tighten as the background widens.
+}
+
+\section{Evaluation}{
+Before the final fit, a stratified \code{test_frac} of the presences and
+background is held out, both members are trained on the rest, and each
+member and the ensemble are scored on the held-out points:
+\itemize{
+\item \strong{AUC}, the probability that a held-out presence scores above a held-out
+background point.
+\item \strong{Continuous Boyce index} (Hirzel et al. 2006): the Spearman correlation
+between suitability and the predicted-to-expected ratio of held-out
+presences, over a moving window. Near 1 means presences concentrate where
+the model says suitability is high; near 0 means no better than random.
+}
+
+The final members are then refitted on all the points. Set \code{test_frac = 0}
+to skip evaluation.
+}
+
+\references{
+Hirzel, A. H., Le Lay, G., Helfer, V., Randin, C., & Guisan, A.
+(2006). Evaluating the ability of habitat suitability models to predict
+species presences. \emph{Ecological Modelling}, 199, 142-152.
 }
 \seealso{
 \code{\link[=project_sdm]{project_sdm()}}, \code{\link[=run_hindcast_series]{run_hindcast_series()}}

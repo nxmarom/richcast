@@ -4,15 +4,18 @@
 \alias{richness_surface}
 \title{Extract a richness surface from a series}
 \usage{
-richness_surface(series, time)
+richness_surface(series, time, layer = c("richness", "expected", "both"))
 }
 \arguments{
 \item{series}{A \code{richcast_series} from \code{\link[=run_hindcast_series]{run_hindcast_series()}}.}
 
 \item{time}{Year CE, or \code{"present"}.}
+
+\item{layer}{\code{"richness"} for the count of species above threshold,
+\code{"expected"} for the sum of suitabilities, or \code{"both"}.}
 }
 \value{
-A \code{SpatRaster} of species counts.
+A \code{SpatRaster}.
 }
 \description{
 Extract a richness surface from a series

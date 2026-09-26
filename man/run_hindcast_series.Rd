@@ -8,16 +8,9 @@ run_hindcast_series(
   db,
   climate,
   times,
-  focus,
-  subregions = NULL,
+  region,
   species = NULL,
-  prefilter_buffer = 8,
-  window = NULL,
-  resolution = 0.1,
-  baseline = "present",
-  replicates = 1,
-  conf = 0.9,
-  min_cells = 100,
+  distance = 10,
   keep_surfaces = TRUE,
   on_error = c("warn", "stop"),
   quiet = FALSE,
@@ -31,245 +24,55 @@ run_hindcast_series(
 
 \item{times}{Numeric vector of years CE.}
 
-\item{focus}{Region to summarise richness over, from \code{\link[=focus_box]{focus_box()}} etc.}
+\item{region}{The modelling region, from \code{\link[=region]{region()}}.}
 
-\item{subregions}{Optional named list of sub-foci, passed to
-\code{\link[=richness_stats]{richness_stats()}}.}
+\item{species}{Optional subset of species names, overriding the distance
+rule.}
 
-\item{species}{Optional subset of species names. Defaults to every species
-in \code{db} whose range intersects \code{focus} (expanded by \code{prefilter_buffer}).}
+\item{distance}{Train only species whose present range lies within this many
+degrees of \code{region}. See \code{\link[=species_near]{species_near()}}.}
 
-\item{prefilter_buffer}{Degrees to expand \code{focus} by when deciding which
-species are relevant. Should be at least the maximum fitting buffer.}
+\item{keep_surfaces}{Retain the richness surfaces, so maps can be drawn
+afterwards. Stored wrapped, so the result survives \code{saveRDS()}.}
 
-\item{window}{Optional \code{\link[=gaussian_window]{gaussian_window()}} for time-averaging.}
-
-\item{resolution}{Richness grid resolution in degrees.}
-
-\item{baseline}{Slice that \code{delta_from_present} is measured against, and
-that the \code{present} richness row is built from. \code{"present"} (default) uses
-the slice the models were fitted on; a numeric year uses that slice
-instead. Either way the baseline is projected through the same path as
-the hindcast slices. See details.}
-
-\item{replicates}{Number of replicate fits per species. Each redraws the
-presence and background samples and re-optimises the threshold, so the
-spread across replicates can be reported. \code{1} (default) fits once, exactly
-as before. See details.}
-
-\item{conf}{Interval width for replicate summaries. \code{0.9} gives the 5th and
-95th percentiles across replicates.}
-
-\item{min_cells}{Smallest range, in grid cells, that can support a
-trajectory. Species below it are still fitted, projected and reported, but
-are left out of the richness surfaces and listed in \code{res$resolvability}.
-\code{0} disables the screen. See the resolvability section.}
-
-\item{keep_surfaces}{Retain the richness raster for every slice, so maps can
-be drawn afterwards. Stored wrapped, so the result still survives
-\code{saveRDS()}. Set \code{FALSE} for very large foci where only the summary
-statistics are wanted.}
-
-\item{on_error}{\code{"warn"} skips a failing species and carries on;
-\code{"stop"} aborts the run.}
+\item{on_error}{\code{"warn"} skips a failing species and carries on; \code{"stop"}
+aborts the run.}
 
 \item{quiet}{Suppress per-species progress.}
 
-\item{...}{Further arguments passed to \code{\link[=fit_sdm]{fit_sdm()}}.}
+\item{...}{Further arguments passed to \code{\link[=fit_sdm]{fit_sdm()}}, e.g. \code{predictors} or
+\code{n_presence}.}
 }
 \value{
-A \code{richcast_series} with three tibbles -- \code{richness} (one row per
-time slice, summarising \code{focus} only), \code{species} (one row per species per
-slice: \code{cells} over the species' study extent, \code{focus_cells} over \code{focus},
-each differenced against the previous slice and against the baseline, plus
-\code{focus_suit_q90} and \code{focus_suit_margin} saying whether the focus clears
-the species' threshold at all), and \code{models} (fit diagnostics) -- plus the
-fitted models and projected ranges. See the two-geographies section before
-plotting \code{cells}, and the niche section before reading \code{focus_cells} as a
-range response.
+A \code{richcast_series}:
+\itemize{
+\item \code{richness}: one row per slice (\code{present} first) with mean, median and
+maximum richness over the region, and \code{mean_expected}.
+\item \code{species}: one row per species per slice. \code{cells} counts suitable cells
+over the species' study extent, \code{region_cells} over the region, each
+with its change from the present.
+\item \code{models}: one row per species with the fit diagnostics and the AUC and
+Boyce index of each ensemble member and of the ensemble.
+\item \code{fits}: the fitted models, for \code{\link[=project_sdm]{project_sdm()}} and \code{\link[=richness_at]{richness_at()}}.
+\item \code{surfaces}: the richness surfaces; see \code{\link[=richness_surface]{richness_surface()}}.
+}
 }
 \description{
-Fits one model per species, projects each onto every requested time slice,
-and summarises assemblage richness at each. This is the top-level entry
-point; the pieces (\code{\link[=fit_sdm]{fit_sdm()}}, \code{\link[=project_sdm]{project_sdm()}}, \code{\link[=richness_stack]{richness_stack()}},
-\code{\link[=richness_stats]{richness_stats()}}) remain usable on their own.
+Selects the species near \code{region} with \code{\link[=species_near]{species_near()}}, fits one ensemble
+model per species with \code{\link[=fit_sdm]{fit_sdm()}}, projects each onto every requested time
+slice, and stacks the results into richness surfaces for the region.
 }
 \details{
-Each species is fitted \strong{once}, then projected repeatedly. Fitting inside
-the time loop -- as the pipeline this package was extracted from did --
-repeats identical work once per slice, since the model depends only on
-present-day climate.
+Each species is fitted \strong{once}, against present-day climate over its own
+study extent, then projected repeatedly. Training is independent of the
+region: the region decides only which species are trained and where
+richness is summarised.
+
+Each slice gets two surfaces on the climate grid cropped to the region:
+\code{richness}, the number of species above their own threshold in each cell,
+and \code{expected}, the sum of the species' ensemble suitabilities -- a
+threshold-free estimate of how many species a cell supports.
 }
-\section{Replicate intervals}{
-
-
-A single fit is one draw. Redrawing the pseudo-occurrences moves the answer
-a great deal: for one Tian Shan marmot, six seeds at the default
-\code{nsample = 100} spanned a 2.4-fold range in present-day extent and
-disagreed on the \emph{sign} of the change at one slice. With \code{replicates > 1},
-\code{res$species} gains \code{cells_min}, \code{cells_max} and \code{cells_sd}, \code{cells} becomes
-the replicate median, and \code{res$richness} gains \code{mean_richness_lo/hi/sd}.
-
-Richness intervals are built by stacking replicate \emph{r} of every species into
-richness surface \emph{r}, then taking quantiles across replicates -- not by
-combining per-species intervals, which would be wrong for a sum.
-
-Do not read a \emph{narrow} interval as a stable answer. Replicates redraw the
-sample, so they measure sampling variability -- and a range small enough to
-be sampled exhaustively has none. Sampling 1000 points with replacement from
-an 8-cell range returns the same 8 cells on every seed, so the replicate
-spread collapses toward zero exactly where the estimate is least
-trustworthy. Measured on synthetic ranges clipped to a fixed number of
-cells, an 8-cell range reproduced its projected extent identically across
-five seeds at slices where a 512-cell range varied by 10\%. The interval was
-tight because there was nothing left to resample, not because the answer was
-firm.
-
-Screen on \code{range_cells} via \code{min_cells} instead; see the next section.
-
-Read these as \strong{precision, not accuracy}. They describe how much the answer
-moves when the sample is redrawn from the same range polygon under the same
-reconstruction. They exclude the range polygon being wrong, the
-reconstruction being wrong, niche conservatism, and the choice of model --
-and in this pipeline the climate-product difference has been \emph{larger} than
-the replicate spread. Use \code{\link[=ensemble_series]{ensemble_series()}} for that layer.
-}
-
-\section{Resolvability}{
-
-
-Some species are too small for the climate grid to say anything about. A
-range covering \code{k} cells gives the model \code{k} distinct climate vectors --
-presences are drawn with replacement, so \code{nsample} cannot manufacture more
--- and every projected extent is then a small integer whose value turns on
-which handful of cells the range happens to contain.
-
-\code{min_cells} names the floor. Species below it are \strong{still fitted, projected
-and reported}: they keep their rows in \verb{$species}, \verb{$models} and \verb{$ranges},
-so nothing becomes uninspectable. They are held out of the richness
-surfaces only, and listed in \verb{$resolvability} with their range size and the
-reason. Silent shrinkage of the assemblage is the failure this is meant to
-avoid, so the omission is always visible in the object and in \code{print()}.
-
-\code{range_cells} counts cells, not area, because the grid is what limits the
-inference: the same range is better resolved on a finer reconstruction. A
-cutoff in cells therefore only means something alongside the resolution it
-was measured at, and \verb{$resolvability} records the \code{min_cells} used.
-
-\code{min_cells} is also stored on the series itself, so a saved result carries
-the setting it was produced under. That matters because a series written
-before the screen existed, one written with the screen disabled, and one
-where every species passed all print as "nothing held out" -- and only the
-last is a clean bill of health. Its absence identifies the first case;
-\code{print()} reports which of the three applies.
-
-The default of 100 is the largest cutoff at which every species measured
-below it was demonstrably unstable: across 31 species spanning 11 to 12549
-cells, all 8 below 100 varied by more than 25\% across sampling seeds at
-their worst slice, and at 200 the rule stops holding. \code{min_cells = 0}
-disables the screen. \code{?richcast-resolvability} records the measurements,
-including what the screen does \emph{not} fix.
-}
-
-\section{Two geographies}{
-
-
-\verb{$species} reports every range size twice, over two different regions, and
-which one a figure should use is a real choice rather than a formality.
-
-\code{cells} is counted over the species' \strong{study extent} -- its own range plus
-the fitting buffer -- because that is the region the model was fitted and
-projected over. It is the honest measure of what happened to the \emph{species}.
-For a widespread taxon it is a continental number: in the Tian Shan
-vignette \emph{Mus musculus} contributes 190225 cells at 1350 CE, of which 13215
-lie in the study region.
-
-\code{focus_cells} is the same range clipped to \code{focus}, on the same grid and
-with the same \code{touches} rule the richness surface uses. It is the measure
-that answers "what happened \emph{here}", and it is the one commensurable with
-\verb{$richness}.
-
-The two are counts on \strong{different grids}: \code{cells} on the climate grid,
-\code{focus_cells} on the \code{resolution} grid the richness surface is built at.
-Their ratio is therefore not a fraction of range inside the focus, and
-\code{focus_cells} can exceed \code{cells} where the richness grid is the finer of
-the two. Compare each column against itself across slices -- the grid
-cancels -- and use area, not counts, to compare one against the other.
-
-The distinction matters most for the species \code{focus} barely contains.
-Species are selected by intersecting a \code{prefilter_buffer}-degree expansion
-of the focus, so a run legitimately includes taxa that reach toward the
-study region without entering it. Those species have rows in \verb{$species}
-and trajectories that move -- and \code{focus_cells} of zero at every slice.
-Plotting \code{cells} without checking \code{focus_cells} puts them on the page as
-though they were part of the local assemblage.
-
-Both are differenced the same two ways, giving \code{focus_delta_from_previous}
-and \code{focus_delta_from_present} alongside the study-extent pair.
-}
-
-\section{Is the focus inside the niche}{
-
-
-\code{focus_cells} says how much of the focus a species holds. It does not say
-whether holding it means anything, and that is a separate question with a
-separate answer.
-
-A projected range is a threshold applied to a continuous surface. Where the
-focus sits well inside a species' modelled niche, the cell count moves when
-the climate moves. Where it sits \emph{at} the cutoff, the count moves when
-anything moves: a shift of a few hundredths in suitability flips large areas
-across the threshold, and the resulting trajectory is a property of the
-cutoff rather than of the region. The two cases are indistinguishable in
-\code{focus_cells} alone -- both give plausible numbers that change between
-slices.
-
-\code{focus_suit_q90} is the ninetieth percentile of suitability inside the focus
-before thresholding, and \code{focus_suit_margin} is that minus the species' own
-threshold. A negative margin means the focus does not clear the cutoff even
-at its ninetieth percentile, so whatever cells the species contributes there
-are an edge effect. Screen on \code{focus_suit_margin > 0} before reading
-regional trajectories as range responses.
-
-Volatility is not a usable substitute. In the Tian Shan vignette nine of 26
-species have a negative margin, holding between 0.4\% and 17\% of the region
-above threshold; a fold-change screen on \code{focus_cells} catches only three of
-them, because a footprint can stay small without swinging. The six it misses
-include the species that led the regional growth ranking.
-
-With \code{replicates > 1}, \code{focus_cells} is measured on the representative
-(median-extent) replicate -- the one \verb{$ranges} stores -- rather than being
-a median of per-replicate focus counts.
-}
-
-\section{Choosing a baseline}{
-
-
-\code{delta_from_present} subtracts a baseline range size from each slice, so it
-only means anything if the baseline and the slices are commensurable. They
-are not when the present-day slice comes from a different climate product
-than the palaeoclimate series -- fitting on WorldClim and projecting onto
-CHELSA, say. The product step then enters every delta, and it does not
-cancel: for one species it inflated the present-day range by 42\%, flipping
-that species from "above present in 2 of 11 centuries" to "above present in
-all 11". The offset is species-specific in both size and sign, so it
-distorts comparisons between taxa as well as within them.
-
-Two ways to keep the comparison honest:
-\itemize{
-\item Use a climate source that is one product throughout, including its
-present-day slice -- \code{climate_dir(path, present = "chelsa_1950")} rather
-than a WorldClim present beside CHELSA slices. Then the default
-\code{baseline = "present"} is already consistent.
-\item Where the reconstruction publishes no present-day slice, set \code{baseline}
-to its youngest time slice and describe results as change relative to
-that, not to the present.
-}
-
-richcast cannot detect which product a directory of GeoTIFFs came from, so
-it cannot warn you automatically. The choice is yours to make explicitly.
-}
-
 \seealso{
-\code{\link[=fit_sdm]{fit_sdm()}}, \code{\link[=richness_stats]{richness_stats()}}
+\code{\link[=fit_sdm]{fit_sdm()}}, \code{\link[=richness_at]{richness_at()}}, \code{\link[=richness_surface]{richness_surface()}}
 }
