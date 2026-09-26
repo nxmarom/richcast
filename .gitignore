@@ -18,3 +18,6 @@ vignettes/*.html
 
 # Local IUCN downloads used for development runs.
 UngulatePolygons/
+
+# Local analysis runs: fitted models, prepared climate and reports.
+analysis/
