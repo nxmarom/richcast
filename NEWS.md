@@ -24,8 +24,8 @@
 * **Species lists**: by default `run_hindcast_series()` models the species
   reported from Pleistocene zooarchaeological and palaeontological sites in
   the preset region (`zooarch_taxa()`, with evidence and sources for every
-  entry); `species =` takes your own list instead. The Middle East list (16
-  bovids, cervids and equids) is compiled; the other presets need a list
+  entry); `species =` takes your own list instead. The Middle East list (14
+  bovids, cervids, equids and wild boar) is compiled; the other presets need a list
   passed in until theirs are.
 * **Predictors** are the eight canonical bioclim variables (`bioclim_vars`:
   bio01, bio04, bio05, bio06, bio12, bio15, bio16, bio17), the default for

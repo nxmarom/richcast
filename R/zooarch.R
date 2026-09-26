@@ -18,8 +18,8 @@
 #'
 #' # Middle East
 #'
-#' Sixteen bovids, cervids and equids from the Levant, the Zagros, Syria and
-#' Arabia, compiled from:
+#' Fourteen bovids, cervids, equids and suids from the Levant, the Zagros,
+#' Syria and Arabia, compiled from:
 #'
 #' * Stewart, M., Louys, J., Price, G. J., Drake, N. A., Groucutt, H. S., &
 #'   Petraglia, M. D. (2019). Middle and Late Pleistocene mammal fossils of
@@ -41,8 +41,10 @@
 #'   Ghar-e Boof (southern Zagros). *Scientific Reports*, 13, 19006.
 #'
 #' Older names are mapped to current IUCN taxonomy: *Capra ibex* from the
-#' Negev to *Capra nubiana*, *Ovis orientalis* to *Ovis gmelini*, *Equus
-#' caballus* to *Equus ferus*.
+#' Negev to *Capra nubiana*, and *Ovis orientalis* to *Ovis gmelini*. *Equus
+#' ferus*, *E. africanus* and *Gazella arabica* are reported in the sources
+#' but left out on review. Wild boar needs its
+#' own IUCN range polygon alongside the ungulate downloads.
 #'
 #' Lists for the other presets are not yet compiled; pass your own species to
 #' [run_hindcast_series()] for those regions.
