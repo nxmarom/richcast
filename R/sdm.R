@@ -124,7 +124,10 @@ fit_sdm <- function(db,
 
   land_geom <- land %||% land_outline("medium")
   land_vec <- terra::vect(sf::st_sf(geometry = sf::st_geometry(land_geom)))
-  sp_vec <- terra::vect(sf::st_sf(geometry = sp_geom))
+  # Range maps that are valid for sf can still break GEOS inside terra's
+  # erase() ("unable to assign free hole to a shell"), so repair them in
+  # terra's own terms first.
+  sp_vec <- terra::makeValid(terra::vect(sf::st_sf(geometry = sp_geom)))
   study_vec <- terra::vect(study_ext, crs = "EPSG:4326")
 
   bg_vec <- terra::erase(study_vec, sp_vec)
