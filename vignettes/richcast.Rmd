@@ -223,14 +223,18 @@ species_near(db, toy)
 
 ## The whole thing at once
 
-`run_hindcast_series()` fits every nearby species, projects each onto every
-slice, and stacks the results.
+`run_hindcast_series()` fits every listed species near the region, projects
+each onto every slice, and stacks the results. For a preset region the list
+defaults to the species reported from that region's Pleistocene
+zooarchaeological record -- see `zooarch_taxa()` -- and a custom box like this
+one needs its own list.
 
 ```{r}
 res <- run_hindcast_series(
   db, clim,
   times      = times,
   region     = toy,
+  species    = c("Genus_alpha", "Genus_beta"),
   predictors = c("bio01", "bio12"),
   land       = land,
   quiet      = TRUE

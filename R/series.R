@@ -22,9 +22,11 @@
 #' @param climate A climate source from [climate_dir()] or [pastclim_climate()].
 #' @param times Numeric vector of years CE.
 #' @param region The modelling region, from [region()].
-#' @param species Optional subset of species names to restrict the run to.
-#'   This narrows the species [species_near()] selects; it cannot add any, so a
-#'   species more than 10 degrees from `region` is never trained.
+#' @param species The species to model. `NULL` (the default) uses the
+#'   Pleistocene zooarchaeological list for the preset `region`
+#'   ([zooarch_taxa()]); otherwise a character vector of your own. Either way
+#'   the list is narrowed by [species_near()]: a species more than 10 degrees
+#'   from `region` is never trained.
 #' @param keep_surfaces Retain the richness surfaces, so maps can be drawn
 #'   afterwards. Stored wrapped, so the result survives `saveRDS()`.
 #' @param on_error `"warn"` skips a failing species and carries on; `"stop"`
@@ -63,23 +65,23 @@ run_hindcast_series <- function(db,
   times <- sort(unique(as.numeric(times)))
   keys <- c("present", as.character(times))
 
-  # The 10-degree rule is not optional: `species` can only narrow it.
+  # The species list defaults to the region's zooarchaeological record, and
+  # the 10-degree rule is not optional: a list can only narrow it.
+  species <- species %||% default_taxa(region)
   targets <- species_near(db, region, quiet = quiet)
-  if (!is.null(species)) {
-    wanted <- normalise_species(species)
-    missing <- setdiff(wanted, db$species)
-    if (length(missing) > 0) {
-      cli::cli_warn("Not in database, skipped: {.val {missing}}.")
-    }
-    far <- setdiff(intersect(wanted, db$species), targets)
-    if (length(far) > 0) {
-      cli::cli_warn(c(
-        "More than {near_distance} deg from {.emph {region$label}}, skipped: {.val {far}}.",
-        "i" = "Species are only trained for regions near their present range."
-      ))
-    }
-    targets <- intersect(wanted, targets)
+  wanted <- normalise_species(species)
+  missing <- setdiff(wanted, db$species)
+  if (length(missing) > 0) {
+    cli::cli_warn("Not in database, skipped: {.val {missing}}.")
   }
+  far <- setdiff(intersect(wanted, db$species), targets)
+  if (length(far) > 0) {
+    cli::cli_warn(c(
+      "More than {near_distance} deg from {.emph {region$label}}, skipped: {.val {far}}.",
+      "i" = "Species are only trained for regions near their present range."
+    ))
+  }
+  targets <- intersect(wanted, targets)
   if (length(targets) == 0) {
     rc_abort(c(
       "No species to model.",

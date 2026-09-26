@@ -2,7 +2,8 @@ run_fixture_series <- function(dir, times = c(950, 850), ...) {
   clim <- structured_climate(dir, times = sort(times))
   res <- run_hindcast_series(
     two_species_db(), clim, times = times, region = region(c(0, 10, 0, 10)),
-    land = fake_land(), num_trees = 50, quiet = TRUE, ...
+    species = c("Genus_low", "Genus_high"), land = fake_land(),
+    num_trees = 50, quiet = TRUE, ...
   )
   list(res = res, clim = clim)
 }
@@ -155,9 +156,13 @@ test_that("run_hindcast_series validates its inputs", {
                                    region = region(c(0, 10, 0, 10))), "times")
   expect_error(run_hindcast_series(db, clim, times = 850,
                                    region = c(0, 10, 0, 10)), "region")
+  expect_error(suppressWarnings(run_hindcast_series(
+    db, clim, times = 850, region = region(c(100, 110, 0, 10)),
+    species = "Genus_low", quiet = TRUE)), "No species")
+  # A custom box has no bundled zooarchaeological list, so one must be given.
   expect_error(run_hindcast_series(db, clim, times = 850,
-                                   region = region(c(100, 110, 0, 10)),
-                                   quiet = TRUE), "No species")
+                                   region = region(c(0, 10, 0, 10)),
+                                   quiet = TRUE), "zooarchaeological")
 })
 
 test_that("a failing species is skipped rather than killing the run", {
@@ -189,4 +194,17 @@ test_that("a failing species is skipped rather than killing the run", {
     )),
     "No species could be modelled"
   )
+})
+
+test_that("a preset region defaults to its zooarchaeological species list", {
+  me <- zooarch_taxa("middle_east")
+  expect_true(all(c("species", "evidence", "source") %in% names(me)))
+  expect_true(all(c("Dama_mesopotamica", "Gazella_gazella", "Capra_aegagrus",
+                    "Equus_hemionus") %in% me$species))
+  expect_false(any(duplicated(me$species)))
+  expect_true(all(nzchar(me$source)))
+  expect_equal(zooarch_taxa(region("middle_east")), me)
+  expect_equal(nrow(zooarch_taxa("europe")), 0)
+  expect_equal(richcast:::default_taxa(region("middle_east")), me$species)
+  expect_error(richcast:::default_taxa(region("europe")), "Pass your own")
 })

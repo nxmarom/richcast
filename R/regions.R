@@ -59,17 +59,20 @@ region <- function(x, label = NULL) {
     }
     coords <- region_presets[[key]]
     label <- label %||% key
+    preset <- key
   } else {
     check_extent(x, arg = "x")
     coords <- x
     label <- label %||% "custom"
+    preset <- NA_character_
   }
   bb <- sf::st_bbox(
     c(xmin = coords[1], xmax = coords[2], ymin = coords[3], ymax = coords[4]),
     crs = sf::st_crs(4326)
   )
   structure(
-    list(geometry = sf::st_as_sfc(bb), box = unname(coords), label = label),
+    list(geometry = sf::st_as_sfc(bb), box = unname(coords), label = label,
+         preset = preset),
     class = "richcast_region"
   )
 }

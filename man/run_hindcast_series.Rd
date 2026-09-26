@@ -25,9 +25,11 @@ run_hindcast_series(
 
 \item{region}{The modelling region, from \code{\link[=region]{region()}}.}
 
-\item{species}{Optional subset of species names to restrict the run to.
-This narrows the species \code{\link[=species_near]{species_near()}} selects; it cannot add any, so a
-species more than 10 degrees from \code{region} is never trained.}
+\item{species}{The species to model. \code{NULL} (the default) uses the
+Pleistocene zooarchaeological list for the preset \code{region}
+(\code{\link[=zooarch_taxa]{zooarch_taxa()}}); otherwise a character vector of your own. Either way
+the list is narrowed by \code{\link[=species_near]{species_near()}}: a species more than 10 degrees
+from \code{region} is never trained.}
 
 \item{keep_surfaces}{Retain the richness surfaces, so maps can be drawn
 afterwards. Stored wrapped, so the result survives \code{saveRDS()}.}

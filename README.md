@@ -107,7 +107,9 @@ For each species:
 * **Evaluation**: AUC and the continuous Boyce index for each member and the
   ensemble, on a 25% hold-out.
 
-When hindcasting a region, only species whose present-day range lies within 10
+By default the species modelled are those on the region's list of ungulates
+from Pleistocene zooarchaeological reports (`zooarch_taxa()`; compiled so far
+for the Middle East), or a list you pass as `species =`. Of those, only species whose present-day range lies within 10
 degrees of it are trained (`species_near()`); the rule is fixed, so naming
 a far-away species cannot bring it in. Each is fitted once and projected
 onto every slice. Preset regions are `"europe"`, `"asia"`, `"middle_east"`,
