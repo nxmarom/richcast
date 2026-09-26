@@ -334,6 +334,11 @@ fit_members <- function(response, covars, num_trees, seed) {
 #' @return A matrix with columns `maxent`, `rf` and `ensemble`.
 #' @noRd
 predict_members <- function(members, newdata) {
+  # The predict() methods are registered only once their packages are loaded.
+  # A model read back with readRDS() in a fresh session has not loaded them,
+  # and stats::predict() then finds no method for a maxnet or ranger object.
+  loadNamespace("maxnet")
+  loadNamespace("ranger")
   newdata <- as.data.frame(newdata)
   n <- nrow(newdata)
   if (n == 0) {
