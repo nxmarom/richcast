@@ -68,9 +68,7 @@ db <- build_taxon_db(iucn_folder("UngulatePolygons"))
 
 # 2. Climate slices, prepared once (slow; resumable)
 clim <- prepare_climate(
-  path   = "climate/beyer",
-  vars   = c("bio01", "bio04", "bio05", "bio06",
-             "bio12", "bio15", "bio16", "bio17"),
+  path   = "climate/beyer",                 # the eight bioclim_vars
   times  = bp_to_ce(seq(-2000, -20000, by = -2000)),
   extent = c(-30, 80, -40, 75),
   dataset_past = "Beyer2020", agg_past = 1
@@ -98,6 +96,8 @@ For each species:
 
 * **Study extent**: the range polygon's bounding box, widened by 30% of its
   diagonal.
+* **Predictors**: the eight canonical bioclim variables (`bioclim_vars`:
+  bio01, bio04, bio05, bio06, bio12, bio15, bio16, bio17).
 * **Training points**: 100 pseudo-presences sampled inside the range polygon,
   1000 background points from the rest of the extent.
 * **Ensemble**: a random forest (`ranger`, balanced down-sampling) and MaxEnt
@@ -108,7 +108,8 @@ For each species:
   ensemble, on a 25% hold-out.
 
 When hindcasting a region, only species whose present-day range lies within 10
-degrees of it are trained (`species_near()`). Each is fitted once and projected
+degrees of it are trained (`species_near()`); the rule is fixed, so naming
+a far-away species cannot bring it in. Each is fitted once and projected
 onto every slice. Preset regions are `"europe"`, `"asia"`, `"middle_east"`,
 `"africa"`, `"north_america"` and `"south_america"` (`region_presets` has their
 boxes).

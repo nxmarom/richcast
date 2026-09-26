@@ -22,10 +22,9 @@
 #' @param climate A climate source from [climate_dir()] or [pastclim_climate()].
 #' @param times Numeric vector of years CE.
 #' @param region The modelling region, from [region()].
-#' @param species Optional subset of species names, overriding the distance
-#'   rule.
-#' @param distance Train only species whose present range lies within this many
-#'   degrees of `region`. See [species_near()].
+#' @param species Optional subset of species names to restrict the run to.
+#'   This narrows the species [species_near()] selects; it cannot add any, so a
+#'   species more than 10 degrees from `region` is never trained.
 #' @param keep_surfaces Retain the richness surfaces, so maps can be drawn
 #'   afterwards. Stored wrapped, so the result survives `saveRDS()`.
 #' @param on_error `"warn"` skips a failing species and carries on; `"stop"`
@@ -50,7 +49,6 @@ run_hindcast_series <- function(db,
                                 times,
                                 region,
                                 species = NULL,
-                                distance = 10,
                                 keep_surfaces = TRUE,
                                 on_error = c("warn", "stop"),
                                 quiet = FALSE,
@@ -65,20 +63,27 @@ run_hindcast_series <- function(db,
   times <- sort(unique(as.numeric(times)))
   keys <- c("present", as.character(times))
 
-  targets <- if (is.null(species)) {
-    species_near(db, region, distance, quiet = quiet)
-  } else {
+  # The 10-degree rule is not optional: `species` can only narrow it.
+  targets <- species_near(db, region, quiet = quiet)
+  if (!is.null(species)) {
     wanted <- normalise_species(species)
     missing <- setdiff(wanted, db$species)
     if (length(missing) > 0) {
       cli::cli_warn("Not in database, skipped: {.val {missing}}.")
     }
-    intersect(wanted, db$species)
+    far <- setdiff(intersect(wanted, db$species), targets)
+    if (length(far) > 0) {
+      cli::cli_warn(c(
+        "More than {near_distance} deg from {.emph {region$label}}, skipped: {.val {far}}.",
+        "i" = "Species are only trained for regions near their present range."
+      ))
+    }
+    targets <- intersect(wanted, targets)
   }
   if (length(targets) == 0) {
     rc_abort(c(
       "No species to model.",
-      "i" = "No range lies within {distance} deg of {.emph {region$label}}."
+      "i" = "No requested range lies within {near_distance} deg of {.emph {region$label}}."
     ))
   }
 

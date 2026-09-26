@@ -18,7 +18,12 @@
   `"middle_east"`, `"africa"`, `"north_america"`, `"south_america"`) or a
   box, replacing `focus_box()`, `focus_global()` and `focus_polygon()`.
 * **Species selection**: `run_hindcast_series()` trains only species whose
-  present range lies within 10 degrees of the region (`species_near()`).
+  present range lies within 10 degrees of the region (`species_near()`). The
+  distance is fixed and always applied; `species =` can narrow the set but not
+  add to it.
+* **Predictors** are the eight canonical bioclim variables (`bioclim_vars`:
+  bio01, bio04, bio05, bio06, bio12, bio15, bio16, bio17), the default for
+  both `fit_sdm()` and `prepare_climate()`. Other variables are refused.
 * **Richness** is stacked from the models' own rasters on the climate grid,
   with an `expected` layer (the sum of suitabilities) beside the thresholded
   count.

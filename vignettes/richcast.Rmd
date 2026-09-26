@@ -214,7 +214,8 @@ toy <- region(c(0, 10, 0, 10), label = "toy region")
 ```
 
 When hindcasting a region, only species whose present-day range lies within
-10 degrees of it are trained; `species_near()` shows which those are.
+10 degrees of it are trained. The rule is fixed and always applied, and
+`species_near()` shows which species it keeps.
 
 ```{r}
 species_near(db, toy)

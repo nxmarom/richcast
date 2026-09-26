@@ -15,6 +15,25 @@
 # and reload as invalid handles -- silently, until first use.
 # ==============================================================================
 
+#' The eight canonical bioclimatic predictors
+#'
+#' Every model is fitted on these, or a subset of them: annual mean
+#' temperature (`bio01`), temperature seasonality (`bio04`), maximum
+#' temperature of the warmest month (`bio05`), minimum temperature of the
+#' coldest month (`bio06`), annual precipitation (`bio12`), precipitation
+#' seasonality (`bio15`), and precipitation of the wettest (`bio16`) and
+#' driest (`bio17`) quarters. Together they describe the means and extremes of
+#' temperature and moisture while leaving out the more redundant bioclim
+#' variables, and all eight are available in the common palaeoclimate
+#' reconstructions (Beyer2020 has no `bio02` or `bio03`, for example).
+#'
+#' @format A character vector of length 8.
+#' @examples
+#' bioclim_vars
+#' @export
+bioclim_vars <- c("bio01", "bio04", "bio05", "bio06",
+                  "bio12", "bio15", "bio16", "bio17")
+
 #' Fit a species distribution model
 #'
 #' Fits an ensemble of a random forest (via \pkg{ranger}) and MaxEnt (via
@@ -65,8 +84,8 @@
 #' @param db A `richcast_db` from [build_taxon_db()].
 #' @param species Species name, or a row index into `db`.
 #' @param climate A climate source from [climate_dir()] or [pastclim_climate()].
-#' @param predictors Character vector of climate variables. `NULL` uses every
-#'   variable the present-day slice provides.
+#' @param predictors Climate variables to fit on: the eight [bioclim_vars] by
+#'   default, or a subset of them.
 #' @param n_presence Number of pseudo-presences drawn inside the range.
 #' @param n_background Number of background points drawn outside it.
 #' @param buffer Study-extent buffer around the range's bounding box, as a
@@ -90,7 +109,7 @@
 fit_sdm <- function(db,
                     species,
                     climate,
-                    predictors = NULL,
+                    predictors = bioclim_vars,
                     n_presence = 100,
                     n_background = 1000,
                     buffer = 0.3,
@@ -109,6 +128,7 @@ fit_sdm <- function(db,
     rc_abort("{.arg test_frac} must be a single number in [0, 1).")
   }
 
+  predictors <- check_predictors(predictors)
   row <- db_row(db, species)
   sp_name <- row$species
   sp_geom <- sf::st_geometry(row)
@@ -117,10 +137,7 @@ fit_sdm <- function(db,
   study_ext <- study_extent(sp_geom, buffer)
   say("[{sp_name}] Loading present-day climate")
   present <- climate_at(climate, "present", predictors, study_ext)
-  predictors <- names(present)
-  if (length(predictors) == 0) {
-    rc_abort("No climate variables available for the present-day slice.")
-  }
+  present <- present[[predictors]]
 
   land_geom <- land %||% land_outline("medium")
   land_vec <- terra::vect(sf::st_sf(geometry = sf::st_geometry(land_geom)))
@@ -442,6 +459,23 @@ resolve_threshold <- function(threshold, obs, pred) {
 # ==============================================================================
 # Spatial internals
 # ==============================================================================
+
+#' Check predictors are drawn from the eight canonical bioclim variables
+#' @noRd
+check_predictors <- function(predictors, arg = "predictors") {
+  if (!is.character(predictors) || length(predictors) == 0 || anyNA(predictors)) {
+    rc_abort("{.arg {arg}} must be a character vector of bioclim variable names.")
+  }
+  extra <- setdiff(predictors, bioclim_vars)
+  if (length(extra) > 0) {
+    rc_abort(c(
+      "{.arg {arg}} must come from the eight canonical bioclim variables.",
+      "x" = "Not allowed: {.val {extra}}.",
+      "i" = "Allowed: {.val {bioclim_vars}}."
+    ))
+  }
+  unique(predictors)
+}
 
 #' Pull one species row from a taxon database
 #' @noRd

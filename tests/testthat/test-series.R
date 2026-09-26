@@ -117,18 +117,34 @@ test_that("richness_at matches the surfaces and lists the expected species", {
   expect_error(richness_at(list(1), 0, 0, climate = x$clim), "richcast_series")
 })
 
-test_that("only species within the distance are trained", {
+test_that("the 10-degree rule cannot be overridden by naming a species", {
   skip_if_not_installed("maxnet")
   skip_if_not_installed("ranger")
   dir <- withr::local_tempdir()
   clim <- structured_climate(dir, times = 850)
-  # Genus_low sits at 0.5-3.5, Genus_high at 6-9. A region at the far corner
-  # with distance 1 reaches Genus_high only.
-  res <- run_hindcast_series(
-    two_species_db(), clim, times = 850, region = region(c(9.5, 10, 9.5, 10)),
-    distance = 1, land = fake_land(), num_trees = 50, quiet = TRUE
+  llama <- build_taxon_db(
+    sf::st_sf(species = "Lama_glama",
+              geometry = sf::st_sfc(square(40, 40, 2), crs = 4326)),
+    quiet = TRUE
   )
-  expect_equal(names(res$fits), "Genus_high")
+  db <- rbind(two_species_db(), llama)
+  expect_false("distance" %in% names(formals(run_hindcast_series)))
+  expect_warning(
+    res <- run_hindcast_series(
+      db, clim, times = 850, region = region(c(0, 10, 0, 10)),
+      species = c("Genus_low", "Lama_glama"), land = fake_land(),
+      num_trees = 50, quiet = TRUE
+    ),
+    "Lama_glama"
+  )
+  expect_equal(names(res$fits), "Genus_low")
+  expect_error(
+    suppressWarnings(run_hindcast_series(
+      db, clim, times = 850, region = region(c(0, 10, 0, 10)),
+      species = "Lama_glama", quiet = TRUE
+    )),
+    "No species to model"
+  )
 })
 
 test_that("run_hindcast_series validates its inputs", {
@@ -150,10 +166,10 @@ test_that("a failing species is skipped rather than killing the run", {
   dir <- withr::local_tempdir()
   clim <- structured_climate(dir, times = 850)
   db <- two_species_db()
-  # A species whose range lies off the climate grid cannot be fitted.
+  # A species near the region but off the climate grid cannot be fitted.
   off <- build_taxon_db(
     sf::st_sf(species = "Genus_off",
-              geometry = sf::st_sfc(square(30, 30, 2), crs = 4326)),
+              geometry = sf::st_sfc(square(12, 12, 2), crs = 4326)),
     quiet = TRUE
   )
   db <- rbind(db, off)

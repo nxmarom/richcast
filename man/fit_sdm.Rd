@@ -8,7 +8,7 @@ fit_sdm(
   db,
   species,
   climate,
-  predictors = NULL,
+  predictors = bioclim_vars,
   n_presence = 100,
   n_background = 1000,
   buffer = 0.3,
@@ -27,8 +27,8 @@ fit_sdm(
 
 \item{climate}{A climate source from \code{\link[=climate_dir]{climate_dir()}} or \code{\link[=pastclim_climate]{pastclim_climate()}}.}
 
-\item{predictors}{Character vector of climate variables. \code{NULL} uses every
-variable the present-day slice provides.}
+\item{predictors}{Climate variables to fit on: the eight \link{bioclim_vars} by
+default, or a subset of them.}
 
 \item{n_presence}{Number of pseudo-presences drawn inside the range.}
 

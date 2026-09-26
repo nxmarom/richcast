@@ -55,7 +55,8 @@ test_that("fit_sdm builds an RF + MaxEnt ensemble with member and ensemble metri
   expect_equal(f$threshold_rule, "p10")
 
   # The ensemble is the mean of its members.
-  d <- data.frame(bio01 = c(5, 20), bio12 = c(10, 30))
+  d <- as.data.frame(setNames(lapply(bioclim_vars, function(v) c(5, 20)),
+                               bioclim_vars))
   p <- richcast:::predict_members(f$members, d)
   expect_equal(p[, "ensemble"], (p[, "maxent"] + p[, "rf"]) / 2)
 
@@ -91,7 +92,7 @@ test_that("pseudo-presences and background default to 100 and 1000", {
   }
   clim <- climate_dir(dir)
   f <- fit_sdm(two_species_db(), "Genus_low", clim, land = fake_land(),
-               num_trees = 50, quiet = TRUE)
+               predictors = c("bio01", "bio12"), num_trees = 50, quiet = TRUE)
   expect_equal(f$n_presence, 100L)
   expect_equal(f$n_background, 1000L)
 })
@@ -137,4 +138,28 @@ test_that("a fitted model survives saveRDS", {
   expect_equal(terra::values(suitability(g)), terra::values(suitability(f)))
   expect_equal(project_sdm(g, clim, 850, quiet = TRUE)$cells,
                project_sdm(f, clim, 850, quiet = TRUE)$cells)
+})
+
+test_that("models use the eight canonical bioclim variables and nothing else", {
+  skip_if_not_installed("maxnet")
+  skip_if_not_installed("ranger")
+  expect_equal(bioclim_vars, c("bio01", "bio04", "bio05", "bio06",
+                               "bio12", "bio15", "bio16", "bio17"))
+  dir <- withr::local_tempdir()
+  clim <- structured_climate(dir, times = 850)
+  # A ninth variable on disk is ignored by default...
+  for (lbl in c("present_1985", "time_0850")) {
+    b <- terra::rast(file.path(dir, lbl, "bio01.tif"))
+    names(b) <- "bio02"
+    terra::writeRaster(b, file.path(dir, lbl, "bio02.tif"))
+  }
+  f <- fit_sdm(two_species_db(), "Genus_low", clim, land = fake_land(),
+               num_trees = 50, quiet = TRUE)
+  expect_equal(f$predictors, bioclim_vars)
+  # ...and refused if asked for.
+  expect_error(fit_sdm(two_species_db(), "Genus_low", clim,
+                       predictors = c("bio01", "bio02")), "canonical")
+  expect_error(prepare_climate(withr::local_tempdir(), vars = "bio19",
+                               times = 850, extent = c(0, 1, 0, 1)),
+               "canonical")
 })

@@ -45,6 +45,6 @@ test_that("species_near keeps ranges within the distance and drops the rest", {
   reg <- region(c(5, 10, 0, 5))
   expect_setequal(species_near(db, reg, quiet = TRUE),
                   c("Genus_inside", "Genus_near"))
-  expect_equal(species_near(db, reg, distance = 0, quiet = TRUE), "Genus_inside")
+  expect_false("distance" %in% names(formals(species_near)))
   expect_error(species_near(db, c(5, 10, 0, 5)), "region")
 })

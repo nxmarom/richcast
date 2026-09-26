@@ -10,7 +10,6 @@ run_hindcast_series(
   times,
   region,
   species = NULL,
-  distance = 10,
   keep_surfaces = TRUE,
   on_error = c("warn", "stop"),
   quiet = FALSE,
@@ -26,11 +25,9 @@ run_hindcast_series(
 
 \item{region}{The modelling region, from \code{\link[=region]{region()}}.}
 
-\item{species}{Optional subset of species names, overriding the distance
-rule.}
-
-\item{distance}{Train only species whose present range lies within this many
-degrees of \code{region}. See \code{\link[=species_near]{species_near()}}.}
+\item{species}{Optional subset of species names to restrict the run to.
+This narrows the species \code{\link[=species_near]{species_near()}} selects; it cannot add any, so a
+species more than 10 degrees from \code{region} is never trained.}
 
 \item{keep_surfaces}{Retain the richness surfaces, so maps can be drawn
 afterwards. Stored wrapped, so the result survives \code{saveRDS()}.}

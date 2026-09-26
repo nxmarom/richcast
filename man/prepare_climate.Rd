@@ -6,7 +6,7 @@
 \usage{
 prepare_climate(
   path,
-  vars,
+  vars = bioclim_vars,
   times,
   extent,
   present_time = 1950,
@@ -23,7 +23,8 @@ prepare_climate(
 \arguments{
 \item{path}{Output directory. One subdirectory per slice is created.}
 
-\item{vars}{Character vector of bioclimatic variables.}
+\item{vars}{Bioclimatic variables to prepare: the eight \link{bioclim_vars} by
+default, or a subset of them.}
 
 \item{times}{Numeric vector of years CE for the palaeoclimate slices.}
 
@@ -77,8 +78,6 @@ Existing files are skipped, so an interrupted run can simply be restarted.
 \dontrun{
 prepare_climate(
   path   = "climate/eurasia",
-  vars   = c("bio01", "bio04", "bio05", "bio06",
-             "bio12", "bio15", "bio16", "bio17"),
   times  = seq(850, 1850, by = 100),
   extent = c(-15, 180, 10, 82)
 )

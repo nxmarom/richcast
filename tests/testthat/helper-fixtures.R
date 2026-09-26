@@ -35,23 +35,25 @@ fake_land <- function() sf::st_sfc(square(-1, -1, 12), crs = 4326)
 # A climate gradient on disk, one directory per slice, each slice nudged so
 # projected ranges differ between them.
 structured_climate <- function(dir, times, present = "present_1985") {
-  grid <- function(shift) {
-    r <- terra::rast(nrows = 20, ncols = 20, xmin = 0, xmax = 10,
-                     ymin = 0, ymax = 10, crs = "EPSG:4326")
-    xy <- terra::xyFromCell(r, seq_len(terra::ncell(r)))
-    terra::values(r) <- xy[, 1] * 3 + xy[, 2] + shift
-    r
-  }
+  r <- terra::rast(nrows = 20, ncols = 20, xmin = 0, xmax = 10,
+                   ymin = 0, ymax = 10, crs = "EPSG:4326")
+  xy <- terra::xyFromCell(r, seq_len(terra::ncell(r)))
+  # One gradient per canonical variable, each a different mix of x and y so
+  # no two are collinear; bio01 and bio12 keep their original form.
+  mix <- list(bio01 = c(3, 1, 1), bio04 = c(1, 2, 0.5), bio05 = c(2, -1, 1),
+              bio06 = c(1, 3, -0.5), bio12 = c(6, 2, -2), bio15 = c(-1, 2, 0.3),
+              bio16 = c(2, 5, -1), bio17 = c(-2, 1, 0.8))
   labels <- c(present, sprintf("time_%04d", times))
   for (i in seq_along(labels)) {
     d <- file.path(dir, labels[i])
     dir.create(d, recursive = TRUE, showWarnings = FALSE)
-    b1 <- grid(i * 0.5)
-    b12 <- grid(-i * 0.5) * 2
-    names(b1) <- "bio01"
-    names(b12) <- "bio12"
-    terra::writeRaster(b1, file.path(d, "bio01.tif"), overwrite = TRUE)
-    terra::writeRaster(b12, file.path(d, "bio12.tif"), overwrite = TRUE)
+    for (v in names(mix)) {
+      m <- mix[[v]]
+      b <- r
+      terra::values(b) <- xy[, 1] * m[1] + xy[, 2] * m[2] + i * 0.5 * m[3]
+      names(b) <- v
+      terra::writeRaster(b, file.path(d, paste0(v, ".tif")), overwrite = TRUE)
+    }
   }
   climate_dir(dir, present = present)
 }

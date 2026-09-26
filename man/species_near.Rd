@@ -4,14 +4,12 @@
 \alias{species_near}
 \title{Species whose ranges lie near a region}
 \usage{
-species_near(db, region, distance = 10, quiet = FALSE)
+species_near(db, region, quiet = FALSE)
 }
 \arguments{
 \item{db}{A \code{richcast_db}.}
 
 \item{region}{A \code{\link[=region]{region()}}.}
-
-\item{distance}{Degrees.}
 
 \item{quiet}{Suppress the report.}
 }
@@ -19,15 +17,15 @@ species_near(db, region, distance = 10, quiet = FALSE)
 A character vector of species names.
 }
 \description{
-The species worth training for a region: those whose present-day range
-polygon comes within \code{distance} degrees of the region's box. A species
-further away cannot plausibly have reached the region under past climate
-without a range shift larger than the model can speak to, and fitting it
-costs time for nothing.
+The species richcast will train for a region: those whose present-day range
+polygon comes within 10 degrees of the region's box. The distance is fixed,
+and \code{\link[=run_hindcast_series]{run_hindcast_series()}} always applies it, so a species far from the
+region can never enter its richness -- a model extrapolated to a continent
+the species has never occupied will happily place a llama in Britain.
 }
 \details{
-Distance is measured on the box expanded by \code{distance} degrees in longitude
-and latitude, which is quick and conservative near the poles.
+Distance is measured on the box expanded by 10 degrees in longitude and
+latitude, which is quick and conservative near the poles.
 }
 \examples{
 db <- build_taxon_db(

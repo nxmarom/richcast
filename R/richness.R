@@ -9,20 +9,23 @@
 # thresholded count.
 # ==============================================================================
 
+#' Maximum distance, in degrees, between a species' range and the region
+#' @noRd
+near_distance <- 10
+
 #' Species whose ranges lie near a region
 #'
-#' The species worth training for a region: those whose present-day range
-#' polygon comes within `distance` degrees of the region's box. A species
-#' further away cannot plausibly have reached the region under past climate
-#' without a range shift larger than the model can speak to, and fitting it
-#' costs time for nothing.
+#' The species richcast will train for a region: those whose present-day range
+#' polygon comes within 10 degrees of the region's box. The distance is fixed,
+#' and [run_hindcast_series()] always applies it, so a species far from the
+#' region can never enter its richness -- a model extrapolated to a continent
+#' the species has never occupied will happily place a llama in Britain.
 #'
-#' Distance is measured on the box expanded by `distance` degrees in longitude
-#' and latitude, which is quick and conservative near the poles.
+#' Distance is measured on the box expanded by 10 degrees in longitude and
+#' latitude, which is quick and conservative near the poles.
 #'
 #' @param db A `richcast_db`.
 #' @param region A [region()].
-#' @param distance Degrees.
 #' @param quiet Suppress the report.
 #' @return A character vector of species names.
 #' @examples
@@ -39,15 +42,13 @@
 #' )
 #' species_near(db, region(c(5, 10, 0, 5)))
 #' @export
-species_near <- function(db, region, distance = 10, quiet = FALSE) {
+species_near <- function(db, region, quiet = FALSE) {
   check_region(region)
-  if (!is.numeric(distance) || length(distance) != 1 || distance < 0) {
-    rc_abort("{.arg distance} must be a single non-negative number of degrees.")
-  }
+  d <- near_distance
   b <- region$box
   wide <- sf::st_as_sfc(sf::st_bbox(
-    c(xmin = max(b[1] - distance, -180), xmax = min(b[2] + distance, 180),
-      ymin = max(b[3] - distance, -90),  ymax = min(b[4] + distance, 90)),
+    c(xmin = max(b[1] - d, -180), xmax = min(b[2] + d, 180),
+      ymin = max(b[3] - d, -90),  ymax = min(b[4] + d, 90)),
     crs = sf::st_crs(4326)
   ))
   hits <- with_planar_fallback(
@@ -58,7 +59,7 @@ species_near <- function(db, region, distance = 10, quiet = FALSE) {
   )
   if (!quiet) {
     cli::cli_alert_info(
-      "{sum(hits)}/{nrow(db)} species lie within {distance} deg of {.emph {region$label}}."
+      "{sum(hits)}/{nrow(db)} species lie within {d} deg of {.emph {region$label}}."
     )
   }
   db$species[hits]
