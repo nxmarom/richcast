@@ -135,6 +135,9 @@ suitabilities, which needs no threshold. `richness_surface()` and
 * `presence_thresholds(res, db)` gives each model's p10 threshold together
   with a TSS-maximising and a minimum-presence threshold, so presence can be
   read as a band from strict to lenient rather than a single line.
+  `vignette("middle-east")` plots richness this way: the strict and lenient
+  counts are each divided by their own median, smoothed separately, and drawn
+  as the band between them.
 
 ## Where the data comes from
 
