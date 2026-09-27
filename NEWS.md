@@ -33,6 +33,8 @@
 * **Richness** is stacked from the models' own rasters on the climate grid,
   with an `expected` layer (the sum of suitabilities) beside the thresholded
   count.
+* **`richness_in()`** pools a small focus area (a `region()` box of a few
+  cells): a species is present if it clears its threshold in any cell.
 * **`richness_at()`** predicts richness and lists the expected species at any
   coordinate and time.
 

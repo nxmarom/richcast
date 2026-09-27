@@ -303,16 +303,7 @@ richness_grid <- function(series, times = NULL, drop_na = TRUE) {
 #' }
 #' @export
 richness_at <- function(x, lon, lat, time = "present", climate) {
-  fits <- if (inherits(x, "richcast_series")) {
-    x$fits
-  } else if (inherits(x, "richcast_sdm")) {
-    stats::setNames(list(x), x$species)
-  } else if (is.list(x) && length(x) > 0 &&
-             all(vapply(x, inherits, logical(1), "richcast_sdm"))) {
-    x
-  } else {
-    rc_abort("{.arg x} must be a {.cls richcast_series}, a {.cls richcast_sdm}, or a list of them.")
-  }
+  fits <- as_fits(x)
   if (!is.numeric(lon) || !is.numeric(lat) || length(lon) == 0 || length(lat) == 0) {
     rc_abort("{.arg lon} and {.arg lat} must be numeric.")
   }
@@ -368,6 +359,123 @@ richness_at <- function(x, lon, lat, time = "present", climate) {
 
   structure(list(richness = richness_tbl, species = species_tbl),
             class = "richcast_point")
+}
+
+#' Predict richness, and the species expected, over a small focus area
+#'
+#' The area counterpart of [richness_at()]. A single climate cell is often
+#' too small a unit to read an assemblage from, so this pools a handful of
+#' cells -- say the 2 x 2 block covering one landscape -- and asks which
+#' species the models place anywhere in it.
+#'
+#' Every grid cell whose centre lies inside `area` is evaluated. A species is
+#' **present** in the area when its ensemble suitability clears its threshold
+#' in at least one of those cells, and its `suitability` is the highest value
+#' among them, so the two agree: present exactly when `suitability >
+#' threshold`. `richness` counts the species present; `expected_richness`
+#' sums their suitabilities. Cells without climate (sea, or ice) are skipped,
+#' so an area on a coast can hold fewer cells in some slices than others --
+#' `cells` records how many were evaluated.
+#'
+#' @param x A `richcast_series`, a single `richcast_sdm`, or a list of them.
+#' @param area The focus area, a [region()] box.
+#' @param time Year(s) CE, and/or `"present"`.
+#' @param climate The climate source the models were fitted with.
+#' @return A `richcast_area` with two tibbles: `richness` (one row per time)
+#'   and `species` (one row per time and species, with `suitability`,
+#'   `threshold`, `present` and `cells_present`).
+#' @seealso [richness_at()], [run_hindcast_series()]
+#' @examples
+#' \dontrun{
+#' focus <- region(c(34.5, 35.5, 31.5, 32.5), label = "focus area")
+#' fa <- richness_in(res, focus, time = c("present", -4050), climate = clim)
+#' fa$richness
+#' }
+#' @export
+richness_in <- function(x, area, time = "present", climate) {
+  fits <- as_fits(x)
+  check_region(area, arg = "area")
+  vars <- unique(unlist(lapply(fits, function(f) f$predictors)))
+
+  sp_rows <- list()
+  area_rows <- list()
+  for (tt in as.character(time)) {
+    clim <- climate_at(climate, if (tt == "present") "present" else as.numeric(tt),
+                       vars, NULL)
+    cells <- terra::cells(clim[[1]], region_ext(area))
+    xy <- terra::xyFromCell(clim, cells)
+    b <- area$box
+    keep <- xy[, 1] > b[1] & xy[, 1] < b[2] & xy[, 2] > b[3] & xy[, 2] < b[4]
+    xy <- xy[keep, , drop = FALSE]
+    vals <- as.data.frame(terra::extract(clim, xy))
+    has_climate <- stats::complete.cases(vals[vars])
+    area_rows[[tt]] <- tibble::tibble(time = tt, cells = sum(has_climate))
+
+    for (f in fits) {
+      se <- f$study_extent
+      inside <- xy[, 1] >= se[1] & xy[, 1] <= se[2] &
+        xy[, 2] >= se[3] & xy[, 2] <= se[4]
+      d <- vals[f$predictors]
+      ok <- inside & stats::complete.cases(d)
+      suit <- if (any(ok)) {
+        predict_members(f$members, d[ok, , drop = FALSE])[, "ensemble"]
+      } else {
+        numeric(0)
+      }
+      best <- if (length(suit)) max(suit) else NA_real_
+      sp_rows[[length(sp_rows) + 1L]] <- tibble::tibble(
+        time = tt, species = f$species, suitability = best,
+        threshold = f$threshold,
+        present = !is.na(best) & best > f$threshold,
+        cells_present = sum(suit > f$threshold)
+      )
+    }
+  }
+  species_tbl <- dplyr::bind_rows(sp_rows) |>
+    dplyr::arrange(.data$time, dplyr::desc(.data$suitability))
+
+  richness_tbl <- species_tbl |>
+    dplyr::group_by(.data$time) |>
+    dplyr::summarise(
+      richness = sum(.data$present),
+      expected_richness = sum(.data$suitability, na.rm = TRUE),
+      species_modelled = sum(!is.na(.data$suitability)),
+      .groups = "drop"
+    ) |>
+    dplyr::left_join(dplyr::bind_rows(area_rows), by = "time")
+
+  structure(list(richness = richness_tbl, species = species_tbl, area = area),
+            class = "richcast_area")
+}
+
+#' @export
+print.richcast_area <- function(x, ...) {
+  cli::cli_text("{.cls richcast_area} {.emph {x$area$label}}")
+  r <- x$richness
+  for (i in seq_len(nrow(r))) {
+    sp <- x$species$species[x$species$present & x$species$time == r$time[i]]
+    cli::cli_text(
+      "  {r$time[i]}: richness {r$richness[i]}, expected {round(r$expected_richness[i], 2)} ({r$cells[i]} cell{?s})"
+    )
+    if (length(sp)) cli::cli_text("    {.emph {sp}}")
+  }
+  cli::cli_text("  {.code $richness} {.code $species}")
+  invisible(x)
+}
+
+#' Fitted models from a series, a single model, or a list of models
+#' @noRd
+as_fits <- function(x) {
+  if (inherits(x, "richcast_series")) {
+    x$fits
+  } else if (inherits(x, "richcast_sdm")) {
+    stats::setNames(list(x), x$species)
+  } else if (is.list(x) && length(x) > 0 &&
+             all(vapply(x, inherits, logical(1), "richcast_sdm"))) {
+    x
+  } else {
+    rc_abort("{.arg x} must be a {.cls richcast_series}, a {.cls richcast_sdm}, or a list of them.")
+  }
 }
 
 #' @export

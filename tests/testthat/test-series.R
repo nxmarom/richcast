@@ -208,3 +208,32 @@ test_that("a preset region defaults to its zooarchaeological species list", {
   expect_equal(richcast:::default_taxa(region("middle_east")), me$species)
   expect_error(richcast:::default_taxa(region("europe")), "Pass your own")
 })
+
+test_that("richness_in pools a block of cells and agrees with richness_at", {
+  skip_if_not_installed("maxnet")
+  skip_if_not_installed("ranger")
+  x <- run_fixture_series(withr::local_tempdir())
+  # A 2 x 2 block of 0.5-degree cells around (2.5, 2.5).
+  block <- region(c(2, 3, 2, 3), label = "block")
+  fa <- richness_in(x$res, block, time = c("present", 850), climate = x$clim)
+  expect_s3_class(fa, "richcast_area")
+  expect_equal(fa$richness$cells, c(4L, 4L))
+
+  centres <- expand.grid(lon = c(2.25, 2.75), lat = c(2.25, 2.75))
+  pt <- richness_at(x$res, centres$lon, centres$lat, time = c("present", 850),
+                    climate = x$clim)
+  per_sp <- pt$species |>
+    dplyr::group_by(time, species) |>
+    dplyr::summarise(n = sum(present), present = any(present),
+                     suit = if (all(is.na(suitability))) NA_real_ else
+                       max(suitability, na.rm = TRUE),
+                     .groups = "drop")
+  got <- dplyr::inner_join(fa$species, per_sp, by = c("time", "species"))
+  expect_equal(nrow(got), 4)
+  expect_equal(got$suitability, got$suit, tolerance = 1e-8)
+  expect_equal(got$present.x, got$present.y)
+  expect_equal(got$cells_present, got$n)
+  expect_equal(fa$species$present,
+               dplyr::coalesce(fa$species$suitability > fa$species$threshold, FALSE))
+  expect_error(richness_in(x$res, c(2, 3, 2, 3), climate = x$clim), "region")
+})
