@@ -15,3 +15,9 @@ inst/extdata/iucn*
 # Vignette HTML is generated into inst/doc by R CMD build; a copy left
 # behind in vignettes/ is a build artefact, not source.
 vignettes/*.html
+
+# Local IUCN downloads used for development runs.
+UngulatePolygons/
+
+# Local analysis runs: fitted models, prepared climate and reports.
+analysis/

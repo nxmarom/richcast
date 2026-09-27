@@ -1,43 +1,33 @@
-# ==============================================================================
-# vignettes/precompute.R
+# Re-render the precomputed vignette(s).
 #
-# The Tian Shan vignette runs against a global IUCN Red List download and ~170
-# MB of prepared climate slices, neither of which can be shipped or downloaded
-# at build time. So it is precomputed: tianshan.Rmd.orig holds the real code,
-# is knitted once on a machine that has the data, and the resulting
-# tianshan.Rmd -- with outputs and figures baked in -- is what ships.
+# middle-east.Rmd.orig needs IUCN range polygons and prepared Beyer2020
+# climate slices, neither of which can ship with the package. It is knitted
+# here, in a local analysis folder holding them, and the knitted markdown and
+# figures are copied back into vignettes/ as the vignette source R CMD build
+# sees. Run from the package root, with the analysis folder laid out as:
 #
-# Re-run this from the package root after changing tianshan.Rmd.orig:
-#
-#   Rscript vignettes/precompute.R
-#
-# Expect roughly 10 minutes. Requires:
-#   ../Inputs/geo_data/iucn_rodentia/data_0.shp
-#   ../Inputs/Climate/eurasia_slices/
-# ==============================================================================
+#   analysis/middle_east_120ka/
+#     UngulatePolygons/   IUCN downloads (or a symlink to them)
+#     beyer/              climate slices from prepare_climate()
+#     runs/               saved model runs (created on first render)
 
-stopifnot(file.exists("DESCRIPTION"))
-
-# Wrapped in a function so on.exit() has a frame to attach to. At top level in
-# a sourced script it fires immediately, reverting the directory before knit
-# runs.
-precompute <- function() {
-  old <- setwd("vignettes")
-  on.exit(setwd(old), add = TRUE)
-
-  # Figures go straight into vignettes/ with a per-vignette prefix, NOT into a
-  # subdirectory. R CMD check treats a vignettes/figure/ directory as leftover
-  # knitr debris and NOTEs about it, which for a precomputed vignette is a
-  # false positive -- those files are the deliverable, not scratch.
-  # error = FALSE so a failing chunk aborts the precompute. knitr's default is
-  # to capture the error, print it into the output and carry on -- which for a
-  # precomputed vignette means shipping a broken one, with stale figures left
-  # over from the previous run still sitting on disk looking plausible.
-  knitr::opts_chunk$set(fig.path = "tianshan-", error = FALSE)
-  knitr::knit("tianshan.Rmd.orig", output = "tianshan.Rmd")
+analysis <- "analysis/middle_east_120ka"
+if (!file.exists(file.path(analysis, "UngulatePolygons"))) {
+  file.symlink(normalizePath("UngulatePolygons"),
+               file.path(analysis, "UngulatePolygons"))
 }
 
-precompute()
+# The render must use this checkout of richcast, not an older installed one.
+lib <- file.path(analysis, "lib")
+dir.create(lib, showWarnings = FALSE)
+install.packages(".", lib = lib, repos = NULL, type = "source", quiet = TRUE)
+.libPaths(c(normalizePath(lib), .libPaths()))
 
-cat("\nPrecomputed vignettes/tianshan.Rmd\n")
-cat("Figures written to vignettes/figure/\n")
+file.copy("vignettes/middle-east.Rmd.orig", analysis, overwrite = TRUE)
+old <- setwd(analysis)
+knitr::knit("middle-east.Rmd.orig", "middle-east.Rmd")
+setwd(old)
+
+file.copy(file.path(analysis, "middle-east.Rmd"), "vignettes", overwrite = TRUE)
+figs <- list.files(analysis, pattern = "^middle-east-.*\\.png$", full.names = TRUE)
+file.copy(figs, "vignettes", overwrite = TRUE)

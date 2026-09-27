@@ -6,7 +6,7 @@
 \alias{richcast-package}
 \title{richcast: Hindcast Species Distributions and Assemblage Richness Through Time}
 \description{
-A taxon-agnostic pipeline for projecting species distribution models onto palaeoclimate reconstructions and summarising the resulting assemblage richness over a series of time slices. Range data are supplied by the user from any of several backends (IUCN Red List shapefiles, GBIF occurrences, or arbitrary 'sf' polygons); climate data are retrieved via 'pastclim'. A trait table for rodents from Ecke et al. (2022) \doi{10.1038/s41467-022-35273-7} is bundled as a worked example.
+Fits a species distribution model for every species near a region, projects it onto palaeoclimate reconstructions across a series of time slices, and stacks the results into assemblage richness surfaces. Ranges come from IUCN Red List polygons supplied by the user; each model is an equally weighted ensemble of a random forest and MaxEnt, trained on pseudo-presences sampled from the range polygon and evaluated by AUC and the continuous Boyce index. Climate data are retrieved via 'pastclim'. A trait table for rodents from Ecke et al. (2022) \doi{10.1038/s41467-022-35273-7} is bundled as a worked example.
 }
 \seealso{
 Useful links:

@@ -28,30 +28,43 @@ print.richcast_range_source <- function(x, ...) {
   invisible(x)
 }
 
-#' Range source: an IUCN Red List range shapefile
+#' Range source: IUCN Red List range polygons
 #'
-#' Points at a Red List spatial download on your own disk. The data are **not**
-#' redistributed by this package and are not bundled with it: the IUCN Red List
-#' Terms of Use (v3, section 4) prohibit redistribution of Red List data, whole
-#' or in part, including within derivative works. Download the ranges yourself
-#' from <https://www.iucnredlist.org/resources/spatial-data-download>, accept
-#' the terms, and cite the version you used.
+#' `iucn_folder()` reads every shapefile (and geopackage) found anywhere under
+#' a folder, so a set of Red List downloads unpacked side by side -- say
+#' `bovid_IUCN/`, `cervid_IUCN/` and `equid_IUCN/` -- is read as one source.
+#' `iucn_shapefile()` reads a single file.
 #'
-#' @param path Path to the shapefile (`.shp`) or geopackage.
-#' @param species_col Name of the binomial column. IUCN exports normally call
-#'   this `SCI_NAME`.
+#' The data are **not** redistributed by this package and are not bundled with
+#' it: the IUCN Red List Terms of Use (v3, section 4) prohibit redistribution of
+#' Red List data, whole or in part, including within derivative works. Download
+#' the ranges yourself from
+#' <https://www.iucnredlist.org/resources/spatial-data-download>, accept the
+#' terms, and cite the version you used.
+#'
+#' # Which polygons count as today's range
+#'
+#' Red List files carry historical and uncertain range alongside the current
+#' one. By default only polygons coded as extant (`PRESENCE` 1-3: extant,
+#' probably extant, possibly extant) and native or reintroduced (`ORIGIN` 1-2)
+#' are kept, since an extinct or introduced patch is not part of the climate
+#' niche a model should learn. Set either argument to `NULL` to keep every
+#' code. Files without the column are not filtered on it.
+#'
+#' @param path For `iucn_folder()`, a folder searched recursively. For
+#'   `iucn_shapefile()`, a `.shp` or `.gpkg` file.
+#' @param species_col Name of the binomial column. IUCN exports call this
+#'   `SCI_NAME`.
 #' @param species Optional character vector of binomials. When given, only
-#'   these are read, via an OGR attribute query, and names are matched in both
-#'   `Genus species` and `Genus_species` form. Worth using when you want a
-#'   handful of taxa from a continental download: the read itself is no faster
-#'   on an unindexed shapefile, but nothing unwanted is materialised and the
-#'   dissolve shrinks accordingly.
-#' @param layer Optional layer name, for multi-layer sources. Defaults to the
-#'   file name without its extension.
+#'   these are read, via an OGR attribute query; names match in both
+#'   `Genus species` and `Genus_species` form.
+#' @param presence,origin IUCN `PRESENCE` and `ORIGIN` codes to keep, or `NULL`
+#'   for all. See details.
+#' @param layer Optional layer name, for multi-layer sources.
 #' @return A `richcast_range_source`.
-#' @seealso [sf_polygons()], [gbif_occurrences()], [build_taxon_db()]
+#' @seealso [build_taxon_db()], [sf_polygons()]
 #' @examples
-#' src <- iucn_shapefile("~/iucn_rodentia/data_0.shp")
+#' src <- iucn_folder("UngulatePolygons")
 #' print(src)
 #'
 #' # Only the taxa you actually intend to model:
@@ -60,49 +73,113 @@ print.richcast_range_source <- function(x, ...) {
 #'   species = c("Gazella gazella", "Sus scrofa", "Capra ibex")
 #' )
 #' @export
-iucn_shapefile <- function(path, species_col = "SCI_NAME", species = NULL,
-                           layer = NULL) {
+iucn_folder <- function(path, species_col = "SCI_NAME", species = NULL,
+                        presence = 1:3, origin = 1:2) {
   new_range_source(
-    "iucn_shapefile",
-    path = path, species_col = species_col, species = species, layer = layer,
+    "iucn_folder",
+    path = path, species_col = species_col, species = species,
+    presence = presence, origin = origin,
     resolver = function(params) {
-      if (!file.exists(params$path)) {
+      if (!dir.exists(params$path)) {
         rc_abort(c(
-          "Range shapefile not found at {.path {params$path}}.",
-          "i" = paste(
-            "IUCN Red List ranges are not bundled with richcast and must be",
-            "downloaded separately from",
-            "{.url https://www.iucnredlist.org/resources/spatial-data-download}."
-          )
+          "Range folder not found at {.path {params$path}}.",
+          "i" = iucn_download_hint()
         ))
       }
-      lyr <- params$layer %||% tools::file_path_sans_ext(basename(params$path))
-
-      if (is.null(params$species)) {
-        cli::cli_progress_step("Reading {.path {basename(params$path)}}")
-        x <- if (is.null(params$layer)) {
-          sf::st_read(params$path, quiet = TRUE)
-        } else {
-          sf::st_read(params$path, layer = lyr, quiet = TRUE)
-        }
-      } else {
-        cli::cli_progress_step(
-          "Reading {length(params$species)} species from {.path {basename(params$path)}}"
-        )
-        x <- read_species_subset(params$path, lyr, params$species_col,
-                                 params$species)
+      files <- list.files(params$path, pattern = "\\.(shp|gpkg)$",
+                          recursive = TRUE, full.names = TRUE,
+                          ignore.case = TRUE)
+      if (length(files) == 0) {
+        rc_abort("No {.file .shp} or {.file .gpkg} files under {.path {params$path}}.")
       }
-
-      check_col(x, params$species_col)
+      cli::cli_progress_step(
+        "Reading {length(files)} range file{?s} from {.path {params$path}}"
+      )
+      parts <- lapply(files, function(f) {
+        x <- read_iucn_file(f, params$species_col, params$species,
+                            layer = NULL, must_match = FALSE)
+        x <- filter_iucn_codes(x, params$presence, params$origin)
+        # Downloads for different groups do not always share columns; the
+        # species column and the geometry are all that is needed downstream.
+        x <- x[, params$species_col]
+        sf::st_geometry(x) <- "geometry"
+        if (is.na(sf::st_crs(x)) || sf::st_crs(x) == sf::st_crs(4326)) x
+        else sf::st_transform(x, 4326)
+      })
+      x <- do.call(rbind, parts)
       if (nrow(x) == 0) {
         rc_abort(c(
           "No features matched.",
-          "i" = "Check the names against the {.val {params$species_col}} column of the source."
+          "i" = "Check the names against the {.val {params$species_col}} column, and the {.arg presence}/{.arg origin} filters."
         ))
       }
       x
     }
   )
+}
+
+#' @rdname iucn_folder
+#' @export
+iucn_shapefile <- function(path, species_col = "SCI_NAME", species = NULL,
+                           presence = 1:3, origin = 1:2, layer = NULL) {
+  new_range_source(
+    "iucn_shapefile",
+    path = path, species_col = species_col, species = species,
+    presence = presence, origin = origin, layer = layer,
+    resolver = function(params) {
+      if (!file.exists(params$path)) {
+        rc_abort(c(
+          "Range shapefile not found at {.path {params$path}}.",
+          "i" = iucn_download_hint()
+        ))
+      }
+      cli::cli_progress_step("Reading {.path {basename(params$path)}}")
+      x <- read_iucn_file(params$path, params$species_col, params$species,
+                          params$layer, must_match = TRUE)
+      filter_iucn_codes(x, params$presence, params$origin)
+    }
+  )
+}
+
+#' @noRd
+iucn_download_hint <- function() {
+  paste(
+    "IUCN Red List ranges are not bundled with richcast and must be",
+    "downloaded separately from",
+    "{.url https://www.iucnredlist.org/resources/spatial-data-download}."
+  )
+}
+
+#' Read one IUCN file, optionally only some species
+#' @noRd
+read_iucn_file <- function(path, species_col, species, layer, must_match) {
+  lyr <- layer %||% tools::file_path_sans_ext(basename(path))
+  x <- if (is.null(species)) {
+    if (is.null(layer)) sf::st_read(path, quiet = TRUE)
+    else sf::st_read(path, layer = lyr, quiet = TRUE)
+  } else {
+    read_species_subset(path, lyr, species_col, species)
+  }
+  check_col(x, species_col)
+  if (must_match && nrow(x) == 0) {
+    rc_abort(c(
+      "No features matched.",
+      "i" = "Check the names against the {.val {species_col}} column of the source."
+    ))
+  }
+  x
+}
+
+#' Keep only the IUCN presence and origin codes asked for
+#' @noRd
+filter_iucn_codes <- function(x, presence, origin) {
+  if (!is.null(presence) && "PRESENCE" %in% names(x)) {
+    x <- x[x$PRESENCE %in% presence, ]
+  }
+  if (!is.null(origin) && "ORIGIN" %in% names(x)) {
+    x <- x[x$ORIGIN %in% origin, ]
+  }
+  x
 }
 
 #' Read only the requested species from a vector source
@@ -182,68 +259,6 @@ sf_polygons <- function(x, species_col = "species") {
   )
 }
 
-#' Range source: GBIF occurrence records
-#'
-#' Fetches point occurrences from GBIF. Unlike the polygon backends this needs
-#' no manual download and no licence negotiation, so it is the quickest way to
-#' get a working pipeline for a new taxon. It is also the methodologically
-#' cleaner input: [fit_sdm()] samples pseudo-occurrences from within polygon
-#' ranges, whereas real occurrence points can be used directly.
-#'
-#' Requires the \pkg{rgbif} package.
-#'
-#' @param species Character vector of binomials to fetch.
-#' @param limit Maximum records per species. GBIF caps a single query at 100000.
-#' @param ... Further arguments passed to [rgbif::occ_search()], e.g.
-#'   `year = "1950,2000"` or `country = "KG"`.
-#' @return A `richcast_range_source`.
-#' @examples
-#' src <- gbif_occurrences(c("Marmota_baibacina", "Marmota_bobak"), limit = 500)
-#' print(src)
-#' @export
-gbif_occurrences <- function(species, limit = 5000, ...) {
-  new_range_source(
-    "gbif_occurrences",
-    species = species, limit = limit, dots = list(...),
-    resolver = function(params) {
-      rlang::check_installed("rgbif", "to fetch GBIF occurrences.")
-      sp <- gsub("_", " ", params$species)
-      cli::cli_progress_bar("Querying GBIF", total = length(sp))
-      out <- lapply(seq_along(sp), function(i) {
-        cli::cli_progress_update(id = NULL)
-        res <- do.call(rgbif::occ_search, c(
-          list(
-            scientificName = sp[i],
-            hasCoordinate = TRUE,
-            hasGeospatialIssue = FALSE,
-            limit = params$limit
-          ),
-          params$dots
-        ))
-        d <- res$data
-        if (is.null(d) || nrow(d) == 0) {
-          cli::cli_warn("No GBIF records for {.val {sp[i]}}.")
-          return(NULL)
-        }
-        data.frame(
-          species = params$species[i],
-          decimalLongitude = d$decimalLongitude,
-          decimalLatitude = d$decimalLatitude
-        )
-      })
-      out <- do.call(rbind, out[!vapply(out, is.null, logical(1))])
-      if (is.null(out) || nrow(out) == 0) {
-        rc_abort("GBIF returned no usable records for any requested species.")
-      }
-      sf::st_as_sf(
-        out,
-        coords = c("decimalLongitude", "decimalLatitude"),
-        crs = 4326
-      )
-    }
-  )
-}
-
 #' Union all features belonging to the same species
 #'
 #' Published range maps are full of self-intersecting rings and duplicated
@@ -281,7 +296,7 @@ resolve_ranges <- function(src) {
   if (!inherits(src, "richcast_range_source")) {
     rc_abort(c(
       "{.arg ranges} must be a range source.",
-      "i" = "Build one with {.fn iucn_shapefile}, {.fn sf_polygons}, or {.fn gbif_occurrences}."
+      "i" = "Build one with {.fn iucn_folder}, {.fn iucn_shapefile} or {.fn sf_polygons}, or pass a folder path."
     ))
   }
   src$resolver(src$params)
@@ -313,18 +328,19 @@ resolve_ranges <- function(src) {
 #'   count is printed, because an inner-join-shaped drop is easy to mistake for
 #'   a real biological filter.
 #'
-#' @param ranges A range source from [iucn_shapefile()], [sf_polygons()] or
-#'   [gbif_occurrences()].
+#' @param ranges A range source from [iucn_folder()], [iucn_shapefile()] or
+#'   [sf_polygons()]; a bare `sf` object; or a folder path, which is read with
+#'   [iucn_folder()] defaults.
 #' @param traits Optional data frame of species attributes, e.g.
 #'   [rodent_traits]. Joined on normalised species name.
 #' @param trait_species_col Name of the species column in `traits`.
 #' @param dissolve Logical. Union multiple features of the same species into a
-#'   single geometry. Defaults to `TRUE`; ignored for point sources.
+#'   single geometry. Defaults to `TRUE`.
 #' @param crs Target coordinate reference system. Defaults to EPSG:4326.
 #' @param quiet Suppress progress messages.
 #' @return A `richcast_db`: an `sf` object with a `species` column first,
 #'   trait columns next, and geometry last.
-#' @seealso [iucn_shapefile()], [gbif_occurrences()], [rodent_traits]
+#' @seealso [iucn_folder()], [rodent_traits]
 #' @examples
 #' ranges <- sf::st_sf(
 #'   species = c("Genus_alpha", "Genus_alpha", "Genus_beta"),
@@ -347,7 +363,13 @@ build_taxon_db <- function(ranges,
 
   say <- function(...) if (!quiet) cli::cli_alert_info(...)
 
-  src <- if (inherits(ranges, "sf")) sf_polygons(ranges) else ranges
+  src <- if (inherits(ranges, "sf")) {
+    sf_polygons(ranges)
+  } else if (is.character(ranges) && length(ranges) == 1) {
+    iucn_folder(ranges)
+  } else {
+    ranges
+  }
   x <- resolve_ranges(src)
   species_col <- src$params$species_col %||% "species"
 
@@ -368,17 +390,20 @@ build_taxon_db <- function(ranges,
     x <- sf::st_transform(x, crs)
   }
 
-  is_point <- all(sf::st_geometry_type(x) %in% c("POINT", "MULTIPOINT"))
+  if (!all(sf::st_geometry_type(x) %in% c("POLYGON", "MULTIPOLYGON"))) {
+    rc_abort(c(
+      "Ranges must be polygons.",
+      "i" = "richcast samples pseudo-presences from inside each range polygon."
+    ))
+  }
 
   # --- Dissolve multi-feature species ------------------------------------
-  if (dissolve && !is_point) {
+  if (dissolve) {
     n_species <- dplyr::n_distinct(x$species)
     if (n_species < n_in) {
       say("Dissolving {n_in} feature{?s} into {n_species} species range{?s}.")
       x <- dissolve_by_species(x, quiet = quiet)
     }
-  } else if (is_point) {
-    say("Point source: {n_in} record{?s} across {dplyr::n_distinct(x$species)} species.")
   }
 
   # --- Trait join --------------------------------------------------------

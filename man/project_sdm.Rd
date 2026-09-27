@@ -4,22 +4,20 @@
 \alias{project_sdm}
 \title{Project a fitted model onto a palaeoclimate slice}
 \usage{
-project_sdm(sdm, climate, time, window = NULL, quiet = FALSE)
+project_sdm(sdm, climate, time, quiet = FALSE)
 }
 \arguments{
 \item{sdm}{A \code{richcast_sdm} from \code{\link[=fit_sdm]{fit_sdm()}}.}
 
 \item{climate}{A climate source.}
 
-\item{time}{Year CE to project onto.}
-
-\item{window}{Optional \code{\link[=gaussian_window]{gaussian_window()}} for time-averaging.}
+\item{time}{Year CE to project onto, or \code{"present"}.}
 
 \item{quiet}{Suppress progress messages.}
 }
 \value{
-A \code{richcast_projection}: the suitability surface, the binarised
-range as \code{sf}, and the suitable-cell count.
+A \code{richcast_projection}: the ensemble suitability surface over the
+species' study extent, the threshold, and the count of cells above it.
 }
 \description{
 Project a fitted model onto a palaeoclimate slice

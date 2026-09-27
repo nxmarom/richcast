@@ -15,12 +15,13 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 change over time, as climate changed?**
 
 It gets there by fitting a distribution model per species against present-day
-climate, projecting each model onto a series of palaeoclimate reconstructions,
-and stacking the resulting ranges into a richness surface for each slice.
+climate -- an equally weighted ensemble of a random forest and MaxEnt, trained
+on pseudo-presences sampled from the species' IUCN range polygon -- projecting
+each model onto a series of palaeoclimate reconstructions, and stacking the
+results into a richness surface for each slice.
 
 This vignette walks through the API on synthetic data, so every chunk here
-actually runs. For a real analysis end to end -- 32 rodent species across the
-Tian Shan, 850--1850 CE -- see `vignette("tianshan")`.
+actually runs.
 
 ```{r setup}
 library(richcast)
@@ -32,10 +33,20 @@ Nearly everything in `richcast` is one of four things.
 
 | Object | Built by | Holds |
 |---|---|---|
-| range source | `iucn_shapefile()`, `gbif_occurrences()`, `sf_polygons()` | where occurrence geometry comes from |
+| range source | `iucn_folder()`, `iucn_shapefile()`, `sf_polygons()` | where range polygons come from |
 | taxon database | `build_taxon_db()` | species, ranges, traits |
 | climate source | `climate_dir()`, `pastclim_climate()` | how to fetch a slice |
-| focus | `focus_box()`, `focus_global()`, `focus_polygon()` | the region to summarise |
+| region | `region()` | the area to model richness over |
+
+With real data, the range source is usually a folder of Red List downloads:
+
+```{r eval = FALSE}
+db <- build_taxon_db(iucn_folder("UngulatePolygons"))
+```
+
+`iucn_folder()` reads every shapefile under the folder, keeps only polygons
+coded as extant and native or reintroduced, and dissolves each species into a
+single range.
 
 ## A taxon database
 
@@ -155,6 +166,20 @@ m <- fit_sdm(db, "Genus_alpha", clim,
 m
 ```
 
+The study extent is the range's bounding box widened by 30% of its diagonal.
+Inside it, 100 pseudo-presences are drawn from the range polygon and 1000
+background points from the rest of the extent. A random forest and MaxEnt are
+each fitted to those points, and their predictions are averaged. The tenth
+percentile of ensemble suitability at the presences (`p10`) sets the
+presence threshold.
+
+`m$metrics` scores each member and the ensemble on a 25% hold-out, by AUC and
+by the continuous Boyce index:
+
+```{r}
+m$metrics
+```
+
 `land` masks predictions to land and keeps background sampling off the ocean.
 It defaults to Natural Earth; here the toy world is entirely land.
 
@@ -168,9 +193,9 @@ for (tt in times) {
 }
 ```
 
-Both objects survive `saveRDS()`. That is worth stating because it is not free:
-bare `terra` objects store external pointers that reload as invalid handles,
-so `richcast` keeps vectors as `sf` and rasters wrapped.
+Both objects survive `saveRDS()`. Bare `terra` objects store external pointers
+that reload as invalid handles, so `richcast` keeps vectors as `sf` and rasters
+wrapped.
 
 ```{r}
 f <- tempfile(fileext = ".rds")
@@ -178,83 +203,86 @@ saveRDS(m, f)
 suitability(readRDS(f))
 ```
 
-### Chronological uncertainty
+## Regions
 
-Dating an archaeological horizon to a single century is usually optimistic.
-`gaussian_window()` averages several slices around the target, weighted toward
-the centre:
-
-```{r}
-gaussian_window(step = 100, weights = c(1, 2, 1))
-```
-
-Pass it to `project_sdm()` or `run_hindcast_series()`. Slices running off the
-end of a reconstruction are dropped and the remaining weights renormalised, so
-a window at the edge narrows rather than silently biasing low.
-
-## Richness
-
-Stack the projected ranges and summarise them over a focus:
+A region is either a preset -- `"europe"`, `"asia"`, `"middle_east"`,
+`"africa"`, `"north_america"` or `"south_america"` -- or your own box:
 
 ```{r}
-focus <- focus_box(c(0, 10, 0, 10), label = "toy region")
-
-ranges_1050 <- list(
-  Genus_alpha = project_sdm(m, clim, 1050, quiet = TRUE)$range
-)
-
-r <- richness_stack(ranges_1050, focus, resolution = 0.25, quiet = TRUE)
-richness_stats(r, time = 1050, focus = focus)
+region("middle_east")
+toy <- region(c(0, 10, 0, 10), label = "toy region")
 ```
 
-`subregions` adds columns for smaller areas inside the focus -- a single site
-within a wider study region, say.
+When hindcasting a region, only species whose present-day range lies within
+10 degrees of it are trained. The rule is fixed and always applied, and
+`species_near()` shows which species it keeps.
+
+```{r}
+species_near(db, toy)
+```
 
 ## The whole thing at once
 
-`run_hindcast_series()` does all of the above for every species and every
-slice, and returns tidy tables.
+`run_hindcast_series()` fits every listed species near the region, projects
+each onto every slice, and stacks the results. For a preset region the list
+defaults to the species reported from that region's Pleistocene
+zooarchaeological record -- see `zooarch_taxa()` -- and a custom box like this
+one needs its own list.
 
 ```{r}
 res <- run_hindcast_series(
   db, clim,
   times      = times,
-  focus      = focus,
+  region     = toy,
+  species    = c("Genus_alpha", "Genus_beta"),
   predictors = c("bio01", "bio12"),
   land       = land,
-  resolution = 0.25,
   quiet      = TRUE
 )
 res
 ```
 
+Richness per slice. `mean_richness` counts species above their threshold;
+`mean_expected` sums their suitabilities instead:
+
 ```{r}
-res$richness[, c("period", "time", "mean_richness", "max_richness")]
+res$richness
 ```
+
+Model metrics, per member and for the ensemble:
+
+```{r}
+res$models
+```
+
+Per-species change, over each species' own study extent (`cells`) and over
+the region (`region_cells`):
 
 ```{r}
 res$species
 ```
 
-These synthetic ranges are a few dozen grid cells each, so some fall below
-`min_cells` and are held out of the richness surfaces as not resolvable at this
-resolution. They keep their rows above; only the richness totals differ, and
-`$resolvability` says who and why:
+The surfaces themselves are kept, as `richness_surface()` rasters or as a tidy
+`richness_grid()` table ready for plotting:
 
 ```{r}
-res$resolvability
+richness_surface(res, 1050, layer = "both")
 ```
 
-Set `min_cells = 0` to switch the screen off. `?richcast-resolvability`
-explains what it is protecting against.
+## Richness at a point
 
-`delta_from_previous` compares each slice to the one before it,
-`delta_from_present` to the present-day baseline. Both are computed after
-sorting time **numerically** -- sorting years as text puts 850 and 950 after
-1850, which silently mis-lags every difference.
+`richness_at()` evaluates every model at a coordinate. It returns the richness
+there and the species expected, ranked by suitability:
+
+```{r}
+pt <- richness_at(res, lon = 2, lat = 2, time = c("present", 1050),
+                  climate = clim)
+pt
+pt$species
+```
 
 ## Where to go next
 
-* `vignette("tianshan")` -- a complete published-scale analysis.
-* `?fit_sdm` -- sampling, buffering and threshold options.
+* `?fit_sdm` -- sampling, the ensemble and the metrics.
+* `?iucn_folder` -- which IUCN polygons count as today's range.
 * `?prepare_climate` -- getting palaeoclimate onto disk.

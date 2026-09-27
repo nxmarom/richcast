@@ -35,52 +35,6 @@ test_that("climate_at returns requested variables and errors informatively", {
   expect_error(richcast:::climate_at(clim, 850, "bio99"), "missing")
 })
 
-test_that("gaussian_window normalises weights and centres on zero", {
-  w <- gaussian_window()
-  expect_equal(sum(w$weights), 1)
-  expect_equal(w$offsets, c(-200, -100, 0, 100, 200))
-  expect_equal(which.max(w$weights), 3L)
-
-  w2 <- gaussian_window(step = 50, weights = c(1, 2, 1))
-  expect_equal(w2$offsets, c(-50, 0, 50))
-  expect_equal(w2$weights, c(0.25, 0.5, 0.25))
-
-  expect_error(gaussian_window(weights = c(1, 1)), "odd-length")
-  expect_error(gaussian_window(weights = c(1, -1, 1)), "non-negative")
-})
-
-test_that("a window averages slices and renormalises around missing ones", {
-  dir <- withr::local_tempdir()
-  clim <- make_fake_climate(dir, times = c(850, 950, 1050))
-
-  # All three slices hold identical values, so any correctly normalised
-  # weighting must return those same values -- this catches the classic
-  # weights-do-not-sum-to-one bug.
-  avg <- richcast:::climate_for_projection(
-    clim, 950, "bio01", NULL,
-    window = gaussian_window(step = 100, weights = c(1, 1, 1)),
-    quiet = TRUE
-  )
-  expect_equal(
-    terra::values(avg, mat = FALSE),
-    as.numeric(seq_len(100)),
-    tolerance = 1e-6
-  )
-
-  # A window running off the end of the reconstruction should renormalise the
-  # surviving weights, not silently shrink the values.
-  edge <- richcast:::climate_for_projection(
-    clim, 1050, "bio01", NULL,
-    window = gaussian_window(step = 100, weights = c(1, 1, 1)),
-    quiet = TRUE
-  )
-  expect_equal(
-    terra::values(edge, mat = FALSE),
-    as.numeric(seq_len(100)),
-    tolerance = 1e-6
-  )
-})
-
 test_that("check_climate_grids catches a mismatched slice", {
   dir <- withr::local_tempdir()
   clim <- make_fake_climate(dir, times = c(850, 950))

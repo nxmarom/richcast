@@ -32,7 +32,8 @@
 #' Existing files are skipped, so an interrupted run can simply be restarted.
 #'
 #' @param path Output directory. One subdirectory per slice is created.
-#' @param vars Character vector of bioclimatic variables.
+#' @param vars Bioclimatic variables to prepare: the eight [bioclim_vars] by
+#'   default, or a subset of them.
 #' @param times Numeric vector of years CE for the palaeoclimate slices.
 #' @param extent Numeric `c(xmin, xmax, ymin, ymax)` to clip to. Clipping at
 #'   this stage is what keeps the whole thing tractable.
@@ -54,15 +55,13 @@
 #' \dontrun{
 #' prepare_climate(
 #'   path   = "climate/eurasia",
-#'   vars   = c("bio01", "bio04", "bio05", "bio06",
-#'              "bio12", "bio15", "bio16", "bio17"),
 #'   times  = seq(850, 1850, by = 100),
 #'   extent = c(-15, 180, 10, 82)
 #' )
 #' }
 #' @export
 prepare_climate <- function(path,
-                            vars,
+                            vars = bioclim_vars,
                             times,
                             extent,
                             present_time = 1950,
@@ -76,6 +75,7 @@ prepare_climate <- function(path,
                             quiet = FALSE) {
 
   rlang::check_installed("pastclim", "to download climate reconstructions.")
+  vars <- check_predictors(vars, arg = "vars")
   say <- function(...) if (!quiet) cli::cli_alert_info(...)
 
   check_extent(extent)
@@ -230,7 +230,7 @@ check_climate_products <- function(climate, quiet = FALSE) {
       "Present-day and palaeoclimate slices come from different products.",
       "x" = "present: {.val {present_ds}}; slices: {.val {past_ds}}.",
       "i" = "Every {.code delta_from_present} then contains the step between the two products, which is species-specific in sign and does not cancel.",
-      "i" = "Either prepare the present slice from {.val {past_ds}}, or set {.arg baseline} in {.fn run_hindcast_series} to a slice from the same product."
+      "i" = "Prepare the present slice from {.val {past_ds}} so that fitting and projection share one product."
     ))
     return(invisible(FALSE))
   }

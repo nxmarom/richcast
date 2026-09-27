@@ -1,221 +1,148 @@
 # ==============================================================================
 # Assemblage richness
+#
+# Richness is built from the models' own rasters rather than from polygons:
+# each species' ensemble suitability is laid onto one grid covering the
+# region, thresholded, and summed. The grid is the climate grid itself, cropped
+# to the region, so nothing is resampled across resolutions. The same pass
+# sums the raw suitabilities, giving expected richness alongside the
+# thresholded count.
 # ==============================================================================
 
-#' Stack species ranges into a richness surface
-#'
-#' Rasterises each species range onto a common grid and sums them, giving the
-#' number of species whose modelled range covers each cell.
-#'
-#' @param ranges A named list of `sf`/`sfc` geometries, one per species.
-#'   `NULL` entries (species with no suitable area) are skipped and counted.
-#' @param focus A [focus_box()] / [focus_global()] / [focus_polygon()] object.
-#'   The grid covers this region only; there is no reason to rasterise a
-#'   global grid to summarise one valley.
-#' @param resolution Cell size in degrees.
-#' @param touches Count a cell as occupied if the range touches it at all.
-#'   `TRUE` matches the source pipeline and slightly inflates small ranges.
-#' @param quiet Suppress progress messages.
-#' @return A `SpatRaster` of species counts, cropped and masked to `focus`.
-#' @seealso [richness_stats()]
-#' @export
-richness_stack <- function(ranges,
-                           focus,
-                           resolution = 0.1,
-                           touches = TRUE,
-                           quiet = FALSE) {
-
-  if (!inherits(focus, "richcast_focus")) {
-    rc_abort("{.arg focus} must come from {.fn focus_box}, {.fn focus_global} or {.fn focus_polygon}.")
-  }
-
-  fe <- focus_ext(focus)
-  template <- terra::rast(fe, resolution = resolution, crs = "EPSG:4326")
-  terra::values(template) <- 0
-
-  kept <- 0L
-  empty <- character(0)
-
-  for (nm in names(ranges)) {
-    g <- ranges[[nm]]
-    if (is.null(g) || length(g) == 0) {
-      empty <- c(empty, nm)
-      next
-    }
-    v <- terra::vect(sf::st_sf(geometry = sf::st_geometry(g)))
-    layer <- terra::rasterize(v, template, field = 1, background = 0,
-                              touches = touches)
-    template <- template + layer
-    kept <- kept + 1L
-  }
-
-  if (!quiet) {
-    cli::cli_alert_info("Stacked {kept} range{?s} at {resolution} deg resolution.")
-    if (length(empty) > 0) {
-      cli::cli_alert_warning(
-        "{length(empty)} species contributed no range: {.val {empty}}."
-      )
-    }
-  }
-
-  out <- terra::mask(template, focus_vect(focus))
-  names(out) <- "richness"
-  out
-}
-
-#' Count focus cells occupied, one species at a time
-#'
-#' The per-species counterpart to [richness_stack()]: same template, same
-#' `touches` rule, but the layers are counted separately instead of summed.
-#'
-#' This exists because a projection's own `cells` count is taken over the
-#' species' study extent -- its range plus the fitting buffer -- which for a
-#' widespread taxon is continental. Richness is a focus-only quantity, so
-#' comparing the two directly compares different geographies.
-#'
-#' @param ranges Named list of `sf`/`sfc` geometries. `NULL` entries count 0.
-#' @inheritParams richness_stack
-#' @return A named integer vector, one element per entry of `ranges`.
+#' Maximum distance, in degrees, between a species' range and the region
 #' @noRd
-focus_cells_each <- function(ranges, focus, resolution = 0.1, touches = TRUE) {
+near_distance <- 10
 
-  if (length(ranges) == 0) {
-    return(stats::setNames(integer(0), character(0)))
-  }
-
-  template <- terra::rast(focus_ext(focus), resolution = resolution,
-                          crs = "EPSG:4326")
-  terra::values(template) <- 0
-  mask_v <- focus_vect(focus)
-
-  vapply(ranges, function(g) {
-    if (is.null(g) || length(g) == 0) return(0L)
-    v <- terra::vect(sf::st_sf(geometry = sf::st_geometry(g)))
-    layer <- terra::rasterize(v, template, field = 1, background = 0,
-                              touches = touches)
-    # Masked per layer rather than after summing, which is what richness_stack
-    # does; for a box focus the two are identical, for a polygon they are not.
-    layer <- terra::mask(layer, mask_v)
-    n <- terra::global(layer, "sum", na.rm = TRUE)[1, 1]
-    if (is.na(n)) 0L else as.integer(n)
-  }, integer(1))
-}
-
-#' Ninetieth-percentile suitability inside the focus
+#' Species whose ranges lie near a region
 #'
-#' How well the focus suits a species at one slice, before thresholding. Read
-#' against the species' own threshold it says whether the region sits inside
-#' the modelled niche or on its edge, which a suitable-cell count cannot: a
-#' species whose focus suitability hovers at the cutoff produces a cell count
-#' that swings by orders of magnitude on shifts of a few hundredths, and the
-#' swing is a property of the threshold rather than of the region.
+#' The species richcast will train for a region: those whose present-day range
+#' polygon comes within 10 degrees of the region's box. The distance is fixed,
+#' and [run_hindcast_series()] always applies it, so a species far from the
+#' region can never enter its richness -- a model extrapolated to a continent
+#' the species has never occupied will happily place a llama in Britain.
 #'
-#' The 90th percentile rather than the maximum, which is one cell and moves
-#' with noise, or the mean, which a large unsuitable area drags down.
+#' Distance is measured on the box expanded by 10 degrees in longitude and
+#' latitude, which is quick and conservative near the poles.
 #'
-#' @param suit A `SpatRaster` of suitability, unwrapped.
-#' @param focus A [focus_box()] / [focus_global()] / [focus_polygon()] object.
-#' @return A single number, or `NA_real_` where the projection does not reach
-#'   the focus at all.
-#' @noRd
-focus_suit_q90 <- function(suit, focus) {
-  v <- tryCatch(
-    terra::values(
-      terra::mask(terra::crop(suit, focus_ext(focus)), focus_vect(focus)),
-      mat = FALSE, na.rm = TRUE
-    ),
-    # A study extent that misses the focus entirely is a real case -- species
-    # are selected on a buffered focus -- and terra aborts on it rather than
-    # returning nothing.
-    error = function(e) numeric(0)
-  )
-  if (length(v) == 0) return(NA_real_)
-  unname(stats::quantile(v, 0.9))
-}
-
-#' Summarise a richness surface
-#'
-#' @details
-#' # Subregions
-#'
-#' `subregions` reports a small area without shrinking the analysis to it.
-#' Richness is computed once, over `focus`; each subregion is then a second
-#' readout of that same surface -- cropped, masked, summarised -- so it costs
-#' a crop rather than another model run.
-#'
-#' This matters when the area of interest is small relative to the climate
-#' grid. A 0.7-degree site box against a 0.5-degree reconstruction contains
-#' about four cells, and a mean over four cells is not a regional signal. Make
-#' the focus regional and demote the site to a subregion, and one run gives
-#' both:
-#'
-#' ```r
-#' run_hindcast_series(
-#'   db, clim, times = times,
-#'   focus      = focus_box(c(33, 40, 29, 37.5), label = "Levant"),
-#'   subregions = list(galilee = focus_box(c(35.05, 35.75, 32.55, 33.30)))
+#' @param db A `richcast_db`.
+#' @param region A [region()].
+#' @param quiet Suppress the report.
+#' @return A character vector of species names.
+#' @examples
+#' db <- build_taxon_db(
+#'   sf::st_sf(
+#'     species = c("Genus_near", "Genus_far"),
+#'     geometry = sf::st_sfc(
+#'       sf::st_polygon(list(cbind(c(0, 1, 1, 0, 0), c(0, 0, 1, 1, 0)))),
+#'       sf::st_polygon(list(cbind(c(60, 61, 61, 60, 60), c(0, 0, 1, 1, 0)))),
+#'       crs = 4326
+#'     )
+#'   ),
+#'   quiet = TRUE
 #' )
-#' ```
-#'
-#' Each named entry adds three columns. `<name>_cells` is worth reading
-#' alongside the other two: a maximum over a handful of cells jumps around
-#' between slices in a way the mean does not.
-#'
-#' A subregion must lie inside `focus`; one that does not yields `NA` with
-#' `cells = 0` rather than an error, since a site drifting outside the study
-#' region is a legitimate thing to discover.
-#'
-#' @param richness A `SpatRaster` from [richness_stack()].
-#' @param time Time label carried into the output row. Numeric years stay
-#'   numeric so that downstream ordering is chronological.
-#' @param focus The focus used to build `richness`, for labelling.
-#' @param subregions Optional named list of [focus_box()] objects. Each adds
-#'   `<name>_max`, `<name>_mean` and `<name>_cells` columns. See details.
-#' @return A one-row tibble.
-#' @seealso [richness_stack()]
+#' species_near(db, region(c(5, 10, 0, 5)))
 #' @export
-richness_stats <- function(richness, time = NA, focus = NULL, subregions = NULL) {
-
-  vals <- terra::values(richness, mat = FALSE, na.rm = TRUE)
-  if (length(vals) == 0) {
-    rc_abort("The richness surface has no non-missing cells.")
-  }
-
-  out <- tibble::tibble(
-    time            = time,
-    focus           = focus$label %||% NA_character_,
-    cells           = length(vals),
-    mean_richness   = mean(vals),
-    median_richness = stats::median(vals),
-    max_richness    = max(vals),
-    variance        = stats::var(vals)
+species_near <- function(db, region, quiet = FALSE) {
+  check_region(region)
+  d <- near_distance
+  b <- region$box
+  wide <- sf::st_as_sfc(sf::st_bbox(
+    c(xmin = max(b[1] - d, -180), xmax = min(b[2] + d, 180),
+      ymin = max(b[3] - d, -90),  ymax = min(b[4] + d, 90)),
+    crs = sf::st_crs(4326)
+  ))
+  hits <- with_planar_fallback(
+    function() {
+      suppressMessages(lengths(sf::st_intersects(sf::st_geometry(db), wide)) > 0)
+    },
+    what = "overlap test", quiet = quiet
   )
-
-  for (nm in names(subregions %||% list())) {
-    sub <- subregions[[nm]]
-
-    # terra aborts with "extents do not overlap" when a subregion falls outside
-    # the focus. A site sitting outside the study region is a real thing to
-    # discover, so report it as zero cells rather than killing the run.
-    sub_r <- tryCatch(
-      terra::mask(terra::crop(richness, focus_ext(sub)), focus_vect(sub)),
-      error = function(e) NULL
+  if (!quiet) {
+    cli::cli_alert_info(
+      "{sum(hits)}/{nrow(db)} species lie within {d} deg of {.emph {region$label}}."
     )
-    if (is.null(sub_r)) {
-      cli::cli_warn(c(
-        "Subregion {.val {nm}} does not overlap the focus.",
-        "i" = "Its columns are NA with {.code {nm}_cells = 0}."
-      ))
-    }
-    sub_vals <- if (is.null(sub_r)) {
-      numeric(0)
-    } else {
-      terra::values(sub_r, mat = FALSE, na.rm = TRUE)
-    }
-    out[[paste0(nm, "_max")]] <- if (length(sub_vals)) max(sub_vals) else NA_real_
-    out[[paste0(nm, "_mean")]] <- if (length(sub_vals)) mean(sub_vals) else NA_real_
-    out[[paste0(nm, "_cells")]] <- length(sub_vals)
   }
+  db$species[hits]
+}
 
-  out
+#' Empty accumulator for one slice's richness
+#' @noRd
+new_stack <- function(template) {
+  zero <- terra::rast(template)
+  terra::values(zero) <- 0
+  list(richness = zero, expected = zero, covered = zero, n = 0L)
+}
+
+#' Add one taxon's suitability to a slice's richness
+#'
+#' A taxon is one species or several merged ones. For a merged taxon each
+#' member's surface is laid on the grid, and in every cell the member furthest
+#' above its own threshold stands for the taxon: the taxon is present where
+#' any member is, and contributes that member's suitability to `expected`.
+#'
+#' @param suits List of member suitability `SpatRaster`s.
+#' @param thresholds Numeric vector of the members' thresholds.
+#' @return The updated accumulator, with `region_cells` -- this taxon's
+#'   above-threshold cells inside the region -- as an attribute.
+#' @noRd
+stack_add <- function(acc, suits, thresholds) {
+  if (inherits(suits, "SpatRaster")) suits <- list(suits)
+  on_grid <- lapply(suits, function(s) tryCatch(
+    terra::resample(s, acc$richness, method = "near"),
+    error = function(e) NULL
+  ))
+  keep <- !vapply(on_grid, is.null, logical(1))
+  if (!any(keep)) {
+    # No member's study extent reaches the region at all.
+    attr(acc, "region_cells") <- 0L
+    return(acc)
+  }
+  s <- terra::rast(on_grid[keep])
+  thr <- unname(thresholds[keep])
+  if (terra::nlyr(s) == 1) {
+    suit <- s
+    present <- s > thr
+  } else {
+    margin <- s - thr
+    best <- terra::which.max(margin)
+    suit <- terra::selectRange(s, best)
+    present <- terra::app(margin, max, na.rm = TRUE) > 0
+  }
+  acc$richness <- acc$richness + terra::ifel(is.na(present), 0, present)
+  acc$expected <- acc$expected + terra::ifel(is.na(suit), 0, suit)
+  acc$covered  <- acc$covered + !is.na(suit)
+  acc$n <- acc$n + 1L
+  n <- terra::global(present, "sum", na.rm = TRUE)[1, 1]
+  attr(acc, "region_cells") <- if (is.na(n)) 0L else as.integer(n)
+  acc
+}
+
+#' Finish an accumulator into a two-layer surface
+#'
+#' Cells no species' model covered -- sea, or land outside every study
+#' extent -- are NA rather than zero: nothing was predicted there, which is not
+#' the same as predicting no species.
+#' @noRd
+stack_finish <- function(acc) {
+  r <- c(acc$richness, acc$expected)
+  names(r) <- c("richness", "expected")
+  terra::mask(r, acc$covered, maskvalues = 0)
+}
+
+#' Summarise one richness surface as a table row
+#' @noRd
+richness_row <- function(surface, period, time, n_species) {
+  rv <- terra::values(surface[["richness"]], mat = FALSE, na.rm = TRUE)
+  ev <- terra::values(surface[["expected"]], mat = FALSE, na.rm = TRUE)
+  have <- length(rv) > 0
+  tibble::tibble(
+    period          = period,
+    time            = time,
+    cells           = length(rv),
+    mean_richness   = if (have) mean(rv) else NA_real_,
+    median_richness = if (have) stats::median(rv) else NA_real_,
+    max_richness    = if (have) max(rv) else NA_real_,
+    mean_expected   = if (have) mean(ev) else NA_real_,
+    species_modelled = n_species
+  )
 }

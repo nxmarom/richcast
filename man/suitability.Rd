@@ -4,10 +4,13 @@
 \alias{suitability}
 \title{Extract the suitability surface from a fitted model or projection}
 \usage{
-suitability(x)
+suitability(x, binary = FALSE)
 }
 \arguments{
 \item{x}{A \code{richcast_sdm} or \code{richcast_projection}.}
+
+\item{binary}{Return presence (1) / absence (0) at the model's threshold
+instead of continuous suitability.}
 }
 \value{
 A \code{SpatRaster}.

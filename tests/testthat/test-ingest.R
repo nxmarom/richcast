@@ -63,7 +63,8 @@ test_that("filter_taxa reports what it removed", {
 })
 
 test_that("bad inputs fail with actionable messages", {
-  expect_error(build_taxon_db("not a source"), "range source")
+  expect_error(build_taxon_db(42), "range source")
+  expect_error(build_taxon_db("/nonexistent/folder"), "folder not found")
   expect_error(sf_polygons(data.frame(a = 1)), "sf")
   expect_error(
     sf_polygons(fixture_ranges(), species_col = "nope"),
@@ -214,4 +215,60 @@ test_that("a vector where a column name belongs is diagnosed, not left to %in%",
   )
   expect_error(sf_polygons(fixture_ranges(), species_col = NA), "single column name")
   expect_error(sf_polygons(fixture_ranges(), species_col = 1), "single column name")
+})
+
+# --- Reading a folder of IUCN downloads ---------------------------------------
+
+write_iucn <- function(dir, name, df) {
+  d <- file.path(dir, name)
+  dir.create(d, recursive = TRUE, showWarnings = FALSE)
+  suppressWarnings(sf::st_write(df, file.path(d, "data_0.shp"), quiet = TRUE))
+}
+
+test_that("iucn_folder reads every shapefile under a folder as one source", {
+  dir <- withr::local_tempdir()
+  write_iucn(dir, "bovid_IUCN", sf::st_sf(
+    SCI_NAME = c("Genus alpha", "Genus alpha"), PRESENCE = 1, ORIGIN = 1,
+    EXTRA = "only here",
+    geometry = sf::st_sfc(square(0, 0), square(5, 0), crs = 4326)
+  ))
+  write_iucn(dir, "cervid_IUCN", sf::st_sf(
+    SCI_NAME = "Genus beta", PRESENCE = 1, ORIGIN = 1,
+    geometry = sf::st_sfc(square(2, 2), crs = 4326)
+  ))
+
+  db <- build_taxon_db(iucn_folder(dir), quiet = TRUE)
+  expect_setequal(db$species, c("Genus_alpha", "Genus_beta"))
+  bb <- sf::st_bbox(db[db$species == "Genus_alpha", ])
+  expect_equal(as.numeric(bb["xmax"]), 6)
+
+  # A bare folder path means the same thing.
+  expect_setequal(build_taxon_db(dir, quiet = TRUE)$species, db$species)
+})
+
+test_that("extinct and introduced polygons are left out by default", {
+  dir <- withr::local_tempdir()
+  write_iucn(dir, "g", sf::st_sf(
+    SCI_NAME = c("Genus alpha", "Genus alpha", "Genus alpha"),
+    PRESENCE = c(1, 5, 1), ORIGIN = c(1, 1, 3),
+    geometry = sf::st_sfc(square(0, 0), square(5, 0), square(0, 5), crs = 4326)
+  ))
+  db <- build_taxon_db(iucn_folder(dir), quiet = TRUE)
+  bb <- sf::st_bbox(db)
+  expect_equal(as.numeric(bb[c("xmax", "ymax")]), c(1, 1))
+
+  all_codes <- build_taxon_db(iucn_folder(dir, presence = NULL, origin = NULL),
+                              quiet = TRUE)
+  expect_equal(as.numeric(sf::st_bbox(all_codes)[c("xmax", "ymax")]), c(6, 6))
+})
+
+test_that("an empty folder fails clearly", {
+  dir <- withr::local_tempdir()
+  expect_error(build_taxon_db(iucn_folder(dir), quiet = TRUE), "No .*files")
+})
+
+test_that("point geometry is refused", {
+  pts <- sf::st_sf(species = "Genus_alpha",
+                   geometry = sf::st_sfc(sf::st_point(c(0, 0)), crs = 4326))
+  expect_error(build_taxon_db(pts, quiet = TRUE), "must be polygons")
 })

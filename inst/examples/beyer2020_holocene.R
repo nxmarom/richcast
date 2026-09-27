@@ -53,36 +53,38 @@ db <- build_taxon_db(
 db <- filter_taxa(db, !is.na(S_index))
 
 # --- 3. Run -----------------------------------------------------------------
-# Richness resolution should not out-run the climate: at 0.5 degree input,
-# a 0.1 degree richness grid invents detail the model never had.
+# Only species whose present range lies within 10 degrees of the region are
+# trained; each is fitted once on Beyer's 0 BP slice and projected onto the rest.
 res <- run_hindcast_series(
   db, clim,
   times      = TIMES_CE,
-  focus      = focus_box(c(68, 87, 39, 46), label = "Tian Shan"),
+  region     = region(c(68, 87, 39, 46), label = "Tian Shan"),
   predictors = VARS,
-  resolution = 0.25,
   on_error   = "warn"
 )
 
 # --- 4. Report in BP, which is how deep time is read ------------------------
 res$richness |>
   dplyr::mutate(bp = ifelse(period == "present", NA, ce_to_bp(time))) |>
-  dplyr::select(period, time_ce = time, bp, mean_richness, max_richness)
+  dplyr::select(period, time_ce = time, bp, mean_richness, mean_expected)
+
+# Model quality, per member and for the ensemble
+res$models[, c("species", "auc_ensemble", "boyce_ensemble",
+               "auc_rf", "auc_maxent")]
 
 # Maps per slice
 richness_grid(res)
-richness_surface(res, bp_to_ce(-6000))
+richness_surface(res, bp_to_ce(-6000), layer = "both")
+
+# Richness and the expected species at one site, now and at 6 ka BP
+richness_at(res, lon = 74.7, lat = 42.8, time = c("present", bp_to_ce(-6000)),
+            climate = clim)
 
 # --- Notes ------------------------------------------------------------------
-# Chronological smoothing: gaussian_window(step = 2000) matches the coarser
-# half of Beyer2020. step = 1000 works only back to 22 ka BP; beyond that it
-# silently lands between slices, and richcast drops the missing ones and
-# renormalises rather than erroring.
-#
-# Global runs: Beyer2020 covers -180/180, -60/90, so extent = c(-180, 180,
-# -60, 90) and focus_global() are viable here in a way they are not with
-# Eurasia-clipped CHELSA slices. Expect every trait-matched species to be
-# modelled rather than the ~32 that reach the Tian Shan.
+# Continental runs: Beyer2020 covers -180/180, -60/90, so a preset region such
+# as region("asia") is viable with a matching prepare_climate() extent. Species
+# ranges extend beyond the region, so prepare the climate at least 10 degrees
+# wider than the region plus the widest species' study extent.
 #
 # Missing variables: Beyer2020 has no bio02 or bio03. The eight above are all
 # present.

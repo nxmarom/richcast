@@ -1,6 +1,6 @@
 citHeader(
   "To cite richcast, cite the package below plus every data source you used: ",
-  "the IUCN Red List version, any GBIF download DOI, the pastclim climate ",
+  "the IUCN Red List version, the pastclim climate ",
   "reconstruction, and Ecke et al. (2022) if you used rodent_traits."
 )
 
@@ -9,7 +9,7 @@ bibentry(
   title    = "richcast: Hindcast Species Distributions and Assemblage Richness Through Time",
   author   = person("Nimrod", "Marom"),
   year     = "2026",
-  note     = "R package version 0.0.0.9000",
+  note     = "R package version 0.1.0",
   url      = "https://github.com/nxmarom/richcast"
 )
 

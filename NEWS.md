@@ -1,4 +1,71 @@
-# richcast 0.0.0.9000 (development)
+# richcast 0.1.0
+
+## Revised and simplified model
+
+* **Input** is IUCN range polygons from a folder: `iucn_folder()` reads every
+  shapefile under it (e.g. `bovid_IUCN/`, `cervid_IUCN/`, `equid_IUCN/`), and
+  `build_taxon_db()` accepts a folder path directly. Only polygons coded as
+  extant (`PRESENCE` 1-3) and native or reintroduced (`ORIGIN` 1-2) are kept
+  by default.
+* **`fit_sdm()` is now an ensemble** of a random forest (`ranger`, balanced
+  down-sampling) and MaxEnt (`maxnet`), averaged with equal weight. It trains
+  on 100 pseudo-presences from inside the range polygon and 1000 background
+  points, over a study extent of the range's bounding box plus 30% of its
+  diagonal. The `p10` threshold is applied to the ensemble.
+* **Metrics**: AUC and the continuous Boyce index for each member and the
+  ensemble, on a 25% hold-out, in `$metrics` and in the series' `$models`.
+* **Regions**: `region()` takes a preset (`"europe"`, `"asia"`,
+  `"middle_east"`, `"africa"`, `"north_america"`, `"south_america"`) or a
+  box, replacing `focus_box()`, `focus_global()` and `focus_polygon()`.
+* **Species selection**: `run_hindcast_series()` trains only species whose
+  present range lies within 10 degrees of the region (`species_near()`). The
+  distance is fixed and always applied; `species =` can narrow the set but not
+  add to it.
+* **Species lists**: by default `run_hindcast_series()` models the species
+  reported from Pleistocene zooarchaeological and palaeontological sites in
+  the preset region (`zooarch_taxa()`, with evidence and sources for every
+  entry); `species =` takes your own list instead. The Middle East list (14
+  bovids, cervids, equids and wild boar) is compiled; the other presets need a list
+  passed in until theirs are.
+* **Merged taxa**: `run_hindcast_series(merge = )` treats several species
+  as one identification (e.g. `Dama_sp` for *Dama dama* and
+  *D. mesopotamica*). Each member is modelled on its own range and the
+  outputs combined: the taxon is present wherever any member is. The Middle
+  East list merges fallow deer, gazelles, wild goat and ibex, and hartebeest
+  and oryx.
+* **Predictors** are the eight canonical bioclim variables (`bioclim_vars`:
+  bio01, bio04, bio05, bio06, bio12, bio15, bio16, bio17), the default for
+  both `fit_sdm()` and `prepare_climate()`. Other variables are refused.
+* **Richness** is stacked from the models' own rasters on the climate grid,
+  with an `expected` layer (the sum of suitabilities) beside the thresholded
+  count.
+* **`richness_in()`** pools a small focus area (a `region()` box of a few
+  cells): a species is present if it clears its threshold in any cell.
+* **`presence_thresholds()`** gives each model's p10 threshold alongside a
+  minimum-presence and a TSS-maximising threshold, computed from its
+  present-day surface, for reading presence as a band; **`suitability_grid()`**
+  returns cell-level suitability for every model over an area.
+* **`richness_at()`** predicts richness and lists the expected species at any
+  coordinate and time.
+
+## Documentation
+
+* New precomputed vignette, `vignette("middle-east")`: Middle Eastern
+  ungulates on Beyer2020, 120 ka to present, with a focus area on
+  Mediterranean Israel. `vignettes/precompute.R` re-renders it.
+* README rewritten around the pipeline; PDF reference manual
+  (`richcast-manual.pdf`).
+
+## Removed
+
+* GBIF occurrences and point ranges, replicate fits (`fit_replicates()`,
+  `project_replicates()`), `ensemble_series()`, `gaussian_window()`,
+  subregions, the per-species focus-margin columns, the `min_cells`
+  resolvability screen, `richness_stack()` and `richness_stats()`, and the
+  `tss`/`mtp` thresholds. `modEvA` and `rgbif` are no longer used.
+* The precomputed Tian Shan vignette, which documented the previous method.
+
+# richcast 0.0.0.9000 (earlier development)
 
 Extracted and generalised from the Tian Shan rodent-richness pipeline.
 
