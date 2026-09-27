@@ -27,7 +27,8 @@ run_hindcast_series(
 
 \item{species}{The species to model. \code{NULL} (the default) uses the
 Pleistocene zooarchaeological list for the preset \code{region}
-(\code{\link[=zooarch_taxa]{zooarch_taxa()}}); otherwise a character vector of your own. Either way
+(\code{\link[=zooarch_taxa]{zooarch_taxa()}}), merging the species it groups (see \code{\link[=merge_taxa]{merge_taxa()}});
+otherwise a character vector of your own. Either way
 the list is narrowed by \code{\link[=species_near]{species_near()}}: a species more than 10 degrees
 from \code{region} is never trained.}
 

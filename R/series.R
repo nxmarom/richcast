@@ -24,7 +24,8 @@
 #' @param region The modelling region, from [region()].
 #' @param species The species to model. `NULL` (the default) uses the
 #'   Pleistocene zooarchaeological list for the preset `region`
-#'   ([zooarch_taxa()]); otherwise a character vector of your own. Either way
+#'   ([zooarch_taxa()]), merging the species it groups (see [merge_taxa()]);
+#'   otherwise a character vector of your own. Either way
 #'   the list is narrowed by [species_near()]: a species more than 10 degrees
 #'   from `region` is never trained.
 #' @param keep_surfaces Retain the richness surfaces, so maps can be drawn
@@ -67,7 +68,10 @@ run_hindcast_series <- function(db,
 
   # The species list defaults to the region's zooarchaeological record, and
   # the 10-degree rule is not optional: a list can only narrow it.
-  species <- species %||% default_taxa(region)
+  if (is.null(species)) {
+    species <- default_taxa(region)
+    db <- apply_taxon_merges(db, zooarch_taxa(region), quiet = quiet)
+  }
   targets <- species_near(db, region, quiet = quiet)
   wanted <- normalise_species(species)
   missing <- setdiff(wanted, db$species)

@@ -10,7 +10,8 @@ zooarch_taxa(region = NULL)
 \item{region}{A \code{\link[=region]{region()}} or a preset name. \code{NULL} returns every list.}
 }
 \value{
-A tibble with \code{region}, \code{species}, \code{evidence} and \code{source}.
+A tibble with \code{region}, \code{species}, \code{evidence}, \code{source} and
+\code{members} (for a merged taxon, the IUCN species it combines).
 }
 \description{
 The species richcast models by default for a preset \code{\link[=region]{region()}}: taxa
@@ -20,8 +21,8 @@ Extinct taxa (aurochs, \emph{Equus hydruntinus}) and taxa outside the bundled
 families have no range polygon to train on and are left out.
 }
 \section{Middle East}{
-Fourteen bovids, cervids, equids and suids from the Levant, the Zagros,
-Syria and Arabia, compiled from:
+Thirteen taxa of bovids, cervids, equids and suids from the Levant, the
+Zagros, Syria and Arabia, compiled from:
 \itemize{
 \item Stewart, M., Louys, J., Price, G. J., Drake, N. A., Groucutt, H. S., &
 Petraglia, M. D. (2019). Middle and Late Pleistocene mammal fossils of
@@ -44,7 +45,10 @@ Ghar-e Boof (southern Zagros). \emph{Scientific Reports}, 13, 19006.
 }
 
 Older names are mapped to current IUCN taxonomy: \emph{Capra ibex} from the
-Negev to \emph{Capra nubiana}, and \emph{Ovis orientalis} to \emph{Ovis gmelini}. \emph{Equus
+Negev to \emph{Capra nubiana}, and \emph{Ovis orientalis} to \emph{Ovis gmelini}. Fallow
+deer are one taxon, \code{Dama_sp}, merging the ranges of \emph{Dama dama} and
+\emph{D. mesopotamica} (the \code{members} column), since the two are not reliably
+separated in the record. \emph{Equus
 ferus}, \emph{E. africanus} and \emph{Gazella arabica} are reported in the sources
 but left out on review. Wild boar needs its
 own IUCN range polygon alongside the ungulate downloads.

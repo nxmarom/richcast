@@ -199,7 +199,7 @@ test_that("a failing species is skipped rather than killing the run", {
 test_that("a preset region defaults to its zooarchaeological species list", {
   me <- zooarch_taxa("middle_east")
   expect_true(all(c("species", "evidence", "source") %in% names(me)))
-  expect_true(all(c("Dama_mesopotamica", "Gazella_gazella", "Capra_aegagrus",
+  expect_true(all(c("Dama_sp", "Gazella_gazella", "Capra_aegagrus",
                     "Equus_hemionus") %in% me$species))
   expect_false(any(duplicated(me$species)))
   expect_true(all(nzchar(me$source)))

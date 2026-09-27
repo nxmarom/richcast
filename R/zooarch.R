@@ -18,8 +18,8 @@
 #'
 #' # Middle East
 #'
-#' Fourteen bovids, cervids, equids and suids from the Levant, the Zagros,
-#' Syria and Arabia, compiled from:
+#' Thirteen taxa of bovids, cervids, equids and suids from the Levant, the
+#' Zagros, Syria and Arabia, compiled from:
 #'
 #' * Stewart, M., Louys, J., Price, G. J., Drake, N. A., Groucutt, H. S., &
 #'   Petraglia, M. D. (2019). Middle and Late Pleistocene mammal fossils of
@@ -41,7 +41,10 @@
 #'   Ghar-e Boof (southern Zagros). *Scientific Reports*, 13, 19006.
 #'
 #' Older names are mapped to current IUCN taxonomy: *Capra ibex* from the
-#' Negev to *Capra nubiana*, and *Ovis orientalis* to *Ovis gmelini*. *Equus
+#' Negev to *Capra nubiana*, and *Ovis orientalis* to *Ovis gmelini*. Fallow
+#' deer are one taxon, `Dama_sp`, merging the ranges of *Dama dama* and
+#' *D. mesopotamica* (the `members` column), since the two are not reliably
+#' separated in the record. *Equus
 #' ferus*, *E. africanus* and *Gazella arabica* are reported in the sources
 #' but left out on review. Wild boar needs its
 #' own IUCN range polygon alongside the ungulate downloads.
@@ -50,13 +53,15 @@
 #' [run_hindcast_series()] for those regions.
 #'
 #' @param region A [region()] or a preset name. `NULL` returns every list.
-#' @return A tibble with `region`, `species`, `evidence` and `source`.
+#' @return A tibble with `region`, `species`, `evidence`, `source` and
+#'   `members` (for a merged taxon, the IUCN species it combines).
 #' @examples
 #' zooarch_taxa("middle_east")
 #' @export
 zooarch_taxa <- function(region = NULL) {
   path <- system.file("extdata", "zooarch_taxa.csv", package = "richcast")
-  tbl <- tibble::as_tibble(utils::read.csv(path, stringsAsFactors = FALSE))
+  tbl <- tibble::as_tibble(utils::read.csv(path, stringsAsFactors = FALSE,
+                                           na.strings = ""))
   if (is.null(region)) return(tbl)
   key <- if (inherits(region, "richcast_region")) region$preset else
     region(region)$preset
