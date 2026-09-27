@@ -21,7 +21,7 @@ Extinct taxa (aurochs, \emph{Equus hydruntinus}) and taxa outside the bundled
 families have no range polygon to train on and are left out.
 }
 \section{Middle East}{
-Thirteen taxa of bovids, cervids, equids and suids from the Levant, the
+Nine taxa of bovids, cervids, equids and suids from the Levant, the
 Zagros, Syria and Arabia, compiled from:
 \itemize{
 \item Stewart, M., Louys, J., Price, G. J., Drake, N. A., Groucutt, H. S., &
@@ -45,10 +45,15 @@ Ghar-e Boof (southern Zagros). \emph{Scientific Reports}, 13, 19006.
 }
 
 Older names are mapped to current IUCN taxonomy: \emph{Capra ibex} from the
-Negev to \emph{Capra nubiana}, and \emph{Ovis orientalis} to \emph{Ovis gmelini}. Fallow
-deer are one taxon, \code{Dama_sp}, since \emph{Dama dama} and \emph{D. mesopotamica} are
-not reliably separated in the record; the \code{members} column names the two,
-which \code{\link[=run_hindcast_series]{run_hindcast_series()}} models separately and then combines. \emph{Equus
+Negev to \emph{Capra nubiana}, and \emph{Ovis orientalis} to \emph{Ovis gmelini}.
+
+Species that are not reliably told apart in the record are one taxon, with
+the \code{members} column naming the species it combines:
+\code{Dama_sp} (\emph{Dama dama}, \emph{D. mesopotamica}), \code{Gazella_sp} (\emph{Gazella
+gazella}, \emph{G. subgutturosa}, \emph{G. dorcas}), \code{Capra_sp} (\emph{Capra aegagrus},
+\emph{C. nubiana}) and \code{Large_antelope} (\emph{Alcelaphus buselaphus}, \emph{Oryx
+leucoryx}). \code{\link[=run_hindcast_series]{run_hindcast_series()}} models each member on its own range and
+then combines them. \emph{Equus
 ferus}, \emph{E. africanus} and \emph{Gazella arabica} are reported in the sources
 but left out on review. Wild boar needs its
 own IUCN range polygon alongside the ungulate downloads.

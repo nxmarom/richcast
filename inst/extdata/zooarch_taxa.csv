@@ -2,13 +2,9 @@ region,species,evidence,source,members
 middle_east,Dama_sp,"Fallow deer, the dominant prey at Qesem, Misliya, Kebara and Hayonim (Levant); reported as D. mesopotamica and D. dama","Stiner 2005; Yeshurun et al. 2007; Stiner et al. 2009; Davis 1974; Been et al. 2017; Stewart et al. 2019",Dama_dama;Dama_mesopotamica
 middle_east,Cervus_elaphus,"Levant (Kebara, Hayonim, Qesem); Zagros (Ghar-e Boof, Bisetun, Bawa Yawan); Iran","Stewart et al. 2019; Mata-Gonzalez et al. 2023",
 middle_east,Capreolus_capreolus,"Levant Middle Palaeolithic; Iran (Wezmeh, Kaldar)","Stewart et al. 2019; Mata-Gonzalez et al. 2023",
-middle_east,Gazella_gazella,"Dominant gazelle of the Levant (Misliya, Kebara, Hayonim); Karaneh IV","Yeshurun et al. 2007; Stewart et al. 2019",
-middle_east,Gazella_subgutturosa,"Umm el Tlel (Syria)","Griggo 2004; via Stewart et al. 2019",
-middle_east,Gazella_dorcas,"Terminal Pleistocene southern Levant","Tsahar et al. 2009",
-middle_east,Alcelaphus_buselaphus,"Hayonim, Geula B, El Wad, Skhul (Levant); Empty Quarter (possible)","Stewart et al. 2019",
-middle_east,Oryx_leucoryx,"Umm el Tlel (Syria); Empty Quarter","Griggo 2004; McClure 1984; via Stewart et al. 2019",
-middle_east,Capra_aegagrus,"Dominates Levantine caprines; Zagros (Kobeh, Shanidar, Ghar-e Boof, Kaldar, Wezmeh)","Stewart et al. 2019; Mata-Gonzalez et al. 2023",
-middle_east,Capra_nubiana,"Abu Noshra II, Nahal Aqev (Negev and Sinai; reported as Capra ibex)","Phillips 1988; Rabinovich 2003; via Stewart et al. 2019",
+middle_east,Gazella_sp,"Gazelles: G. gazella dominant in the Levant (Misliya, Kebara, Hayonim, Karaneh IV); G. subgutturosa at Umm el Tlel (Syria); G. dorcas in the terminal Pleistocene southern Levant","Yeshurun et al. 2007; Griggo 2004; Tsahar et al. 2009; Stewart et al. 2019",Gazella_gazella;Gazella_subgutturosa;Gazella_dorcas
+middle_east,Large_antelope,"Hartebeest at Hayonim, Geula B, El Wad and Skhul (Levant); oryx at Umm el Tlel (Syria) and in the Empty Quarter","Griggo 2004; McClure 1984; Stewart et al. 2019",Alcelaphus_buselaphus;Oryx_leucoryx
+middle_east,Capra_sp,"Wild goat dominates Levantine and Zagros caprines (Kobeh, Shanidar, Ghar-e Boof, Kaldar, Wezmeh); ibex at Abu Noshra II and Nahal Aqev (reported as Capra ibex)","Phillips 1988; Rabinovich 2003; Stewart et al. 2019; Mata-Gonzalez et al. 2023",Capra_aegagrus;Capra_nubiana
 middle_east,Ovis_gmelini,"Zagros (Kobeh, Shanidar; Ovis spp. at Wezmeh and Qalehjough; reported as Ovis orientalis)","Stewart et al. 2019; Mata-Gonzalez et al. 2023",
 middle_east,Equus_hemionus,"Levant; Arabia (Ti's al Ghadah, Empty Quarter, Shi'bat Dihya); Zagros (Wezmeh, Warwasi)","Stewart et al. 2019",
 middle_east,Sus_scrofa,"Levant Middle Palaeolithic (Qesem, Misliya, Hayonim); Zagros (Ghar-e Boof); Jordan and Iran","Stiner 2005; Stiner et al. 2009; Stewart et al. 2019; Mata-Gonzalez et al. 2023",

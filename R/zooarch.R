@@ -18,7 +18,7 @@
 #'
 #' # Middle East
 #'
-#' Thirteen taxa of bovids, cervids, equids and suids from the Levant, the
+#' Nine taxa of bovids, cervids, equids and suids from the Levant, the
 #' Zagros, Syria and Arabia, compiled from:
 #'
 #' * Stewart, M., Louys, J., Price, G. J., Drake, N. A., Groucutt, H. S., &
@@ -41,10 +41,15 @@
 #'   Ghar-e Boof (southern Zagros). *Scientific Reports*, 13, 19006.
 #'
 #' Older names are mapped to current IUCN taxonomy: *Capra ibex* from the
-#' Negev to *Capra nubiana*, and *Ovis orientalis* to *Ovis gmelini*. Fallow
-#' deer are one taxon, `Dama_sp`, since *Dama dama* and *D. mesopotamica* are
-#' not reliably separated in the record; the `members` column names the two,
-#' which [run_hindcast_series()] models separately and then combines. *Equus
+#' Negev to *Capra nubiana*, and *Ovis orientalis* to *Ovis gmelini*.
+#'
+#' Species that are not reliably told apart in the record are one taxon, with
+#' the `members` column naming the species it combines:
+#' `Dama_sp` (*Dama dama*, *D. mesopotamica*), `Gazella_sp` (*Gazella
+#' gazella*, *G. subgutturosa*, *G. dorcas*), `Capra_sp` (*Capra aegagrus*,
+#' *C. nubiana*) and `Large_antelope` (*Alcelaphus buselaphus*, *Oryx
+#' leucoryx*). [run_hindcast_series()] models each member on its own range and
+#' then combines them. *Equus
 #' ferus*, *E. africanus* and *Gazella arabica* are reported in the sources
 #' but left out on review. Wild boar needs its
 #' own IUCN range polygon alongside the ungulate downloads.
