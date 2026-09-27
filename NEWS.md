@@ -41,6 +41,10 @@
   count.
 * **`richness_in()`** pools a small focus area (a `region()` box of a few
   cells): a species is present if it clears its threshold in any cell.
+* **`presence_thresholds()`** gives each model's p10 threshold alongside a
+  minimum-presence and a TSS-maximising threshold, computed from its
+  present-day surface, for reading presence as a band; **`suitability_grid()`**
+  returns cell-level suitability for every model over an area.
 * **`richness_at()`** predicts richness and lists the expected species at any
   coordinate and time.
 

@@ -435,43 +435,24 @@ richness_at <- function(x, lon, lat, time = "present", climate) {
 #' }
 #' @export
 richness_in <- function(x, area, time = "present", climate) {
-  fits <- as_fits(x)
-  check_region(area, arg = "area")
-  vars <- unique(unlist(lapply(fits, function(f) f$predictors)))
-
   sp_rows <- list()
   area_rows <- list()
   for (tt in as.character(time)) {
-    clim <- climate_at(climate, if (tt == "present") "present" else as.numeric(tt),
-                       vars, NULL)
-    cells <- terra::cells(clim[[1]], region_ext(area))
-    xy <- terra::xyFromCell(clim, cells)
-    b <- area$box
-    keep <- xy[, 1] > b[1] & xy[, 1] < b[2] & xy[, 2] > b[3] & xy[, 2] < b[4]
-    xy <- xy[keep, , drop = FALSE]
-    vals <- as.data.frame(terra::extract(clim, xy))
-    has_climate <- stats::complete.cases(vals[vars])
-    area_rows[[tt]] <- tibble::tibble(time = tt, cells = sum(has_climate))
-
-    for (f in fits) {
-      se <- f$study_extent
-      inside <- xy[, 1] >= se[1] & xy[, 1] <= se[2] &
-        xy[, 2] >= se[3] & xy[, 2] <= se[4]
-      d <- vals[f$predictors]
-      ok <- inside & stats::complete.cases(d)
-      suit <- if (any(ok)) {
-        predict_members(f$members, d[ok, , drop = FALSE])[, "ensemble"]
-      } else {
-        numeric(0)
-      }
-      best <- if (length(suit)) max(suit) else NA_real_
-      sp_rows[[length(sp_rows) + 1L]] <- tibble::tibble(
-        time = tt, species = f$species, suitability = best,
-        threshold = f$threshold,
-        present = !is.na(best) & best > f$threshold,
-        cells_present = sum(suit > f$threshold)
-      )
-    }
+    g <- suitability_grid(x, area, tt, climate)
+    area_rows[[tt]] <- tibble::tibble(time = tt, cells = attr(g, "cells"))
+    sp_rows[[tt]] <- g |>
+      dplyr::group_by(.data$species, .data$threshold) |>
+      dplyr::summarise(
+        cells_present = sum(.data$suitability > .data$threshold, na.rm = TRUE),
+        suitability = if (all(is.na(.data$suitability))) NA_real_ else
+          max(.data$suitability, na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      dplyr::mutate(time = tt,
+                    present = !is.na(.data$suitability) &
+                      .data$suitability > .data$threshold) |>
+      dplyr::select("time", "species", "suitability", "threshold", "present",
+                    "cells_present")
   }
   species_tbl <- dplyr::bind_rows(sp_rows) |>
     collapse_taxa(taxa_of(x), "time") |>
@@ -489,6 +470,105 @@ richness_in <- function(x, area, time = "present", climate) {
 
   structure(list(richness = richness_tbl, species = species_tbl, area = area),
             class = "richcast_area")
+}
+
+#' Suitability of every fitted species in every cell of an area
+#'
+#' The cell-level table behind [richness_in()]: each grid cell whose centre
+#' lies inside `area`, evaluated by every fitted model whose study extent
+#' covers it. Cells without climate are skipped. Merged taxa are not
+#' collapsed here -- each fitted species keeps its own rows -- so thresholds
+#' other than the fitted ones can be applied afterwards.
+#'
+#' @inheritParams richness_in
+#' @param time A single year CE, or `"present"`.
+#' @return A tibble with `x`, `y`, `species`, `suitability` and `threshold`,
+#'   one row per cell and fitted species. The number of cells with climate is
+#'   attached as the `cells` attribute.
+#' @seealso [richness_in()], [presence_thresholds()]
+#' @export
+suitability_grid <- function(x, area, time, climate) {
+  fits <- as_fits(x)
+  check_region(area, arg = "area")
+  if (length(time) != 1) rc_abort("{.arg time} must be a single slice.")
+  vars <- unique(unlist(lapply(fits, function(f) f$predictors)))
+  tt <- as.character(time)
+
+  clim <- climate_at(climate, if (tt == "present") "present" else as.numeric(tt),
+                     vars, NULL)
+  cells <- terra::cells(clim[[1]], region_ext(area))
+  xy <- terra::xyFromCell(clim, cells)
+  b <- area$box
+  keep <- xy[, 1] > b[1] & xy[, 1] < b[2] & xy[, 2] > b[3] & xy[, 2] < b[4]
+  xy <- xy[keep, , drop = FALSE]
+  vals <- as.data.frame(terra::extract(clim, xy))
+  has_climate <- stats::complete.cases(vals[vars])
+
+  rows <- lapply(fits, function(f) {
+    se <- f$study_extent
+    inside <- xy[, 1] >= se[1] & xy[, 1] <= se[2] &
+      xy[, 2] >= se[3] & xy[, 2] <= se[4]
+    d <- vals[f$predictors]
+    ok <- inside & stats::complete.cases(d)
+    suit <- rep(NA_real_, nrow(xy))
+    if (any(ok)) {
+      suit[ok] <- predict_members(f$members, d[ok, , drop = FALSE])[, "ensemble"]
+    }
+    tibble::tibble(x = xy[, 1], y = xy[, 2], species = f$species,
+                   suitability = suit, threshold = f$threshold)
+  })
+  out <- dplyr::bind_rows(rows)
+  attr(out, "cells") <- sum(has_climate)
+  out
+}
+
+#' Alternative presence thresholds for each fitted model
+#'
+#' richcast binarises with the p10 threshold, which tolerates 10% omission of
+#' the training presences. Two alternatives, for reading presence as a band
+#' rather than a line, computed from each model's present-day suitability
+#' surface without refitting:
+#'
+#' * `min_presence`: the lowest suitability the model assigns anywhere inside
+#'   the species' own range polygon. The most permissive rule; suitability
+#'   between it and p10 reads as possible but marginal presence. It is set by
+#'   the single worst cell in the range, so it is sensitive to ragged range
+#'   edges.
+#' * `tss`: the cutoff that maximises the true skill statistic (sensitivity +
+#'   specificity - 1) when cells inside the range polygon are treated as
+#'   presences and the rest of the study extent as absences. It depends on how
+#'   wide the study extent is, and can fall above or below p10.
+#'
+#' @param x A `richcast_series`, a single `richcast_sdm`, or a list of them.
+#' @param db The `richcast_db` the models were fitted from.
+#' @return A tibble with `species`, `threshold` (the fitted p10 threshold),
+#'   `min_presence` and `tss`.
+#' @seealso [suitability_grid()]
+#' @export
+presence_thresholds <- function(x, db) {
+  fits <- as_fits(x)
+  dplyr::bind_rows(lapply(fits, function(f) {
+    row <- db_row(db, f$species)
+    poly <- terra::makeValid(terra::vect(sf::st_sf(geometry = sf::st_geometry(row))))
+    suit <- suitability(f)
+    pres <- terra::values(terra::mask(suit, poly), mat = FALSE, na.rm = TRUE)
+    abs <- terra::values(terra::mask(suit, poly, inverse = TRUE), mat = FALSE,
+                         na.rm = TRUE)
+    tibble::tibble(species = f$species, threshold = f$threshold,
+                   min_presence = if (length(pres)) min(pres) else NA_real_,
+                   tss = tss_cutoff(pres, abs))
+  }))
+}
+
+#' The cutoff maximising sensitivity + specificity - 1
+#' @noRd
+tss_cutoff <- function(pres, abs) {
+  if (length(pres) == 0 || length(abs) == 0) return(NA_real_)
+  cand <- unique(stats::quantile(c(pres, abs), seq(0, 1, length.out = 501),
+                                 names = FALSE))
+  tss <- vapply(cand, function(c) mean(pres >= c) + mean(abs < c) - 1,
+                numeric(1))
+  cand[which.max(tss)]
 }
 
 #' @export

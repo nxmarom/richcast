@@ -269,3 +269,23 @@ test_that("merged taxa are modelled per member and counted once", {
   expect_equal(pt$richness$richness, c(1L, 1L))
   expect_equal(pt$species$present, pt$species$suitability > pt$species$threshold)
 })
+
+test_that("suitability_grid and presence_thresholds give cell-level detail", {
+  skip_if_not_installed("maxnet")
+  skip_if_not_installed("ranger")
+  x <- run_fixture_series(withr::local_tempdir())
+  g <- suitability_grid(x$res, region(c(2, 3, 2, 3)), 850, x$clim)
+  expect_equal(attr(g, "cells"), 4L)
+  expect_equal(nrow(g), 8)
+  expect_named(g, c("x", "y", "species", "suitability", "threshold"))
+  expect_error(suitability_grid(x$res, region(c(2, 3, 2, 3)), c(850, 950), x$clim),
+               "single")
+
+  mp <- presence_thresholds(x$res, two_species_db())
+  expect_setequal(mp$species, c("Genus_low", "Genus_high"))
+  expect_true(all(mp$min_presence <= mp$threshold))
+  expect_true(all(mp$min_presence >= 0))
+  expect_true(all(mp$tss > 0 & mp$tss < 1))
+  cut <- richcast:::tss_cutoff(c(0.8, 0.9), c(0.1, 0.2))
+  expect_true(cut > 0.2 && cut <= 0.8)
+})
