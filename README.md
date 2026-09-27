@@ -163,6 +163,11 @@ version, the palaeoclimate reconstruction, the sources behind any
 `zooarch_taxa()` list you relied on, and Ecke et al. (2022) if you used
 `rodent_traits`. `citation("richcast")` lists them.
 
+## How this was built
+
+The original code is by Nimrod Marom; later development was done with Claude
+(Anthropic). See [AI_COLLABORATION.md](AI_COLLABORATION.md).
+
 ## License
 
 MIT for the code. `rodent_traits` is CC BY 4.0 (Ecke et al. 2022). Data you
