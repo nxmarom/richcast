@@ -4,16 +4,17 @@
 [![R-CMD-check](https://github.com/nxmarom/richcast/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/nxmarom/richcast/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-<!-- While the repository is private the badge renders only for signed-in
-     users with access; it will show publicly if the repo is ever opened up. -->
-
 **Hindcast species distributions and assemblage richness through time.**
 
-`richcast` fits a species distribution model for every species near a region,
-projects each onto palaeoclimate reconstructions across a series of time
-slices, and stacks the results into richness surfaces for that region. It is taxon-agnostic: rodents,
-ungulates, carnivorans and anything else with range data and a climate niche
-go through the same functions.
+`richcast` models where a set of species could have lived under past climates
+and adds them up into species richness. For a region, it takes each species'
+present-day IUCN range, fits a species distribution model to it, projects that
+model onto a palaeoclimate reconstruction slice by slice, and stacks the
+results into richness surfaces. You can then ask what the richness was, and
+which species were expected, anywhere in the region at any slice.
+
+The reference manual is [`richcast-manual.pdf`](richcast-manual.pdf); a worked
+analysis is in `vignette("middle-east")`.
 
 ## Installation
 
@@ -22,127 +23,147 @@ go through the same functions.
 remotes::install_github("nxmarom/richcast", build_vignettes = TRUE)
 ```
 
-`build_vignettes = TRUE` is worth the extra minute. Without it the package
-installs correctly and nothing errors, but `vignette("richcast")` finds
-nothing — the vignettes are simply absent, silently.
-
-`pak::pak("nxmarom/richcast")` and `devtools::install_github()` also work and
-have the same default.
-
-Some dependencies are not on CRAN. `rnaturalearthhires` lives on r-universe and
-is only needed for a high-resolution land mask, which degrades to medium
-resolution with a warning when it is absent:
+Without `build_vignettes = TRUE` the package installs and works, but the
+vignettes are silently absent. `rnaturalearthhires`, needed only for a
+high-resolution land mask, lives on r-universe:
 
 ```r
 install.packages("rnaturalearthhires", repos = "https://ropensci.r-universe.dev")
 ```
 
-## Where the data comes from
+## The pipeline
 
-`richcast` bundles **no range data and no climate data**, by design.
-
-* **Ranges** are IUCN Red List polygons you download yourself. Unpack the
-  downloads side by side in one folder and point `iucn_folder()` at it;
-  `sf_polygons()` takes any polygon `sf` object you already hold.
-* **Climate** is retrieved through [`pastclim`](https://evolecolgroup.github.io/pastclim/),
-  which handles WorldClim and CHELSA-TraCE21k downloads and caching.
-* **Traits** for rodents ship with the package as `rodent_traits`, from
-  Ecke et al. (2022), redistributable under CC BY 4.0.
-
-### A note on IUCN Red List data
-
-IUCN Red List range polygons **cannot** be redistributed. The Red List Terms
-of Use (v3, section 4) prohibit redistribution "in whole, or in part... alone
-or combined with other data, including within Derivative Works". That covers
-any file this package might ship, so `iucn_shapefile()` points at a download
-you make yourself, under your own acceptance of those terms. Cite the version
-you used.
-
-## Quick start
-
-```r
-library(richcast)
-
-# 1. Ranges: every IUCN shapefile under a folder, dissolved per species
-db <- build_taxon_db(iucn_folder("UngulatePolygons"))
-
-# 2. Climate slices, prepared once (slow; resumable)
-clim <- prepare_climate(
-  path   = "climate/beyer",                 # the eight bioclim_vars
-  times  = bp_to_ce(seq(-2000, -20000, by = -2000)),
-  extent = c(-30, 80, -40, 75),
-  dataset_past = "Beyer2020", agg_past = 1
-)
-
-# 3. Fit, project and stack, for a preset region or your own box
-res <- run_hindcast_series(
-  db, clim,
-  times  = bp_to_ce(seq(-2000, -20000, by = -2000)),
-  region = region("middle_east")        # or region(c(xmin, xmax, ymin, ymax))
-)
-
-res$richness   # one row per slice: mean/median/max richness, mean expected
-res$models     # AUC and Boyce for the RF, MaxEnt and the ensemble
-res$species    # suitable cells per species per slice
-
-# 4. Richness, and the expected species, at a coordinate
-richness_at(res, lon = 35.5, lat = 33, time = c("present", -4050),
-            climate = clim)
+```
+IUCN polygons ──► build_taxon_db() ──┐
+                                     ├─► run_hindcast_series() ──► richness, maps,
+pastclim slices ─► prepare_climate() ┘        per taxon:              metrics
+                                          fit_sdm() once,
+region() + species list ─────────────►    project_sdm() per slice  ──► richness_at()
+                                                                       richness_in()
 ```
 
-## The model
+### 1. Ranges
 
-For each species:
+`iucn_folder()` reads every IUCN Red List shapefile under a folder, so
+downloads for several groups (`bovid_IUCN/`, `cervid_IUCN/`, `sus_IUCN/`, ...)
+unpacked side by side are read as one source. Only polygons coded as extant
+(`PRESENCE` 1-3) and native or reintroduced (`ORIGIN` 1-2) are kept, since an
+extinct or introduced patch is not part of the niche a model should learn.
+`build_taxon_db()` then dissolves each species' polygons into a single range.
 
-* **Study extent**: the range polygon's bounding box, widened by 30% of its
-  diagonal.
-* **Predictors**: the eight canonical bioclim variables (`bioclim_vars`:
-  bio01, bio04, bio05, bio06, bio12, bio15, bio16, bio17).
-* **Training points**: 100 pseudo-presences sampled inside the range polygon,
-  1000 background points from the rest of the extent.
-* **Ensemble**: a random forest (`ranger`, balanced down-sampling) and MaxEnt
-  (`maxnet`), averaged with equal weight.
-* **Threshold**: `p10`, the tenth percentile of ensemble suitability at the
-  training presences.
-* **Evaluation**: AUC and the continuous Boyce index for each member and the
-  ensemble, on a 25% hold-out.
+```r
+db <- build_taxon_db(iucn_folder("UngulatePolygons"))
+```
 
-By default the species modelled are those on the region's list of ungulates
-from Pleistocene zooarchaeological reports (`zooarch_taxa()`; compiled so far
-for the Middle East), or a list you pass as `species =`. Of those, only species whose present-day range lies within 10
-degrees of it are trained (`species_near()`); the rule is fixed, so naming
-a far-away species cannot bring it in. Each is fitted once and projected
-onto every slice. Preset regions are `"europe"`, `"asia"`, `"middle_east"`,
-`"africa"`, `"north_america"` and `"south_america"` (`region_presets` has their
-boxes).
+### 2. Climate
 
-Every slice yields two surfaces: `richness`, the number of species above their
-threshold, and `expected`, the sum of their suitabilities.
+`prepare_climate()` streams the slices from
+[`pastclim`](https://evolecolgroup.github.io/pastclim/) once, one variable at a
+time, and writes them to disk; an interrupted run resumes. Models use the
+eight canonical bioclimatic variables in `bioclim_vars` (bio01, bio04, bio05,
+bio06, bio12, bio15, bio16, bio17), and nothing else.
+
+```r
+steps <- pastclim::get_time_bp_steps(dataset = "Beyer2020")
+clim <- prepare_climate("beyer", times = bp_to_ce(steps[steps < 0]),
+                        extent = c(-180, 180, -60, 90),
+                        dataset_past = "Beyer2020", agg_past = 1)
+```
+
+Years are CE throughout; `bp_to_ce()` and `ce_to_bp()` convert.
+
+### 3. Region and species
+
+`region()` takes a preset (`"europe"`, `"asia"`, `"middle_east"`, `"africa"`,
+`"north_america"`, `"south_america"`) or a box `c(xmin, xmax, ymin, ymax)`.
+
+The species default to the region's list of taxa reported from **Pleistocene
+zooarchaeological and palaeontological sites**, `zooarch_taxa()`, with the
+evidence and source for each entry (compiled so far for the Middle East). Pass
+`species =` to use your own list instead.
+
+Whatever the list, only species whose present range lies **within 10 degrees**
+of the region are trained (`species_near()`). The rule is fixed: naming a
+far-away species cannot bring it in, so no llamas turn up in Britain.
+
+Species that the record does not tell apart form one **merged taxon**
+(`merge =`, e.g. `Dama_sp` for *Dama dama* and *D. mesopotamica*). Each member
+is modelled on its own range and the outputs are combined: the taxon is present
+wherever any member is. Modelling the union of their ranges instead lets the
+larger range swamp the smaller.
+
+### 4. The model
+
+For each species, `fit_sdm()`:
+
+* sets a **study extent** of the range's bounding box plus 30% of its
+  diagonal;
+* draws **100 pseudo-presences** inside the range polygon and **1000
+  background points** from the rest of the extent;
+* fits a **random forest** (`ranger`, balanced down-sampling) and **MaxEnt**
+  (`maxnet`) and averages them with equal weight;
+* sets presence at the **p10 threshold**, the tenth percentile of ensemble
+  suitability at the training presences;
+* scores **AUC and the continuous Boyce index** for each member and the
+  ensemble on a 25% hold-out.
+
+Each model is fitted once, on present-day climate, and `project_sdm()` applies
+it to every slice within its own study extent.
+
+### 5. Richness
+
+```r
+res <- run_hindcast_series(db, clim, times = bp_to_ce(steps[steps < 0]),
+                           region = region("middle_east"))
+res$richness   # per slice: mean, median and max richness; mean expected
+res$models     # per species: AUC and Boyce for RF, MaxEnt and the ensemble
+res$species    # per taxon and slice: occupied cells, and change from today
+```
+
+Each slice gives two surfaces on the climate grid: **`richness`**, the number
+of taxa above their threshold in a cell, and **`expected`**, the sum of their
+suitabilities, which needs no threshold. `richness_surface()` and
+`richness_grid()` return them for mapping.
+
+### 6. Points, focus areas and thresholds
+
+* `richness_at(res, lon, lat, time, climate)` gives richness, expected
+  richness and the ranked list of expected taxa at a coordinate.
+* `richness_in(res, area, time, climate)` does the same for a small **focus
+  area** of a few cells: a taxon is present if it clears its threshold in any
+  of them. `suitability_grid()` returns the cell-level values underneath.
+* `presence_thresholds(res, db)` gives each model's p10 threshold together
+  with a TSS-maximising and a minimum-presence threshold, so presence can be
+  read as a band from strict to lenient rather than a single line.
+
+## Where the data comes from
+
+`richcast` bundles **no range data and no climate data**.
+
+* **Ranges** are IUCN Red List polygons you download yourself. The Red List
+  Terms of Use (v3, section 4) prohibit redistributing them "in whole, or in
+  part... including within Derivative Works", so the package ships none, and
+  the vignette prints none. Cite the Red List version you used.
+* **Climate** comes through `pastclim`, which handles the Beyer2020,
+  CHELSA-TraCE21k and WorldClim downloads.
+* **Traits** for rodents ship as `rodent_traits` (Ecke et al. 2022, CC BY 4.0).
 
 ## Vignettes
 
-* `vignette("richcast")` — the API, on synthetic data you can run yourself.
-
-## Why the ranges get dissolved
-
-Range databases store one species across many features — IUCN splits by
-subspecies, seasonality and disjunct patches, so a global rodent download
-holds ~3100 features for ~2350 species. If each feature is treated as a
-species, the model trains on a single fragment while the *rest of that
-species' true range* goes into the background sample: the model is asked to
-discriminate the species from itself.
-
-`build_taxon_db()` unions features by species by default. Pass
-`dissolve = FALSE` if per-feature modelling is genuinely what you want.
+* `vignette("richcast")`: the API on synthetic data you can run yourself.
+* `vignette("middle-east")`: the full pipeline on Middle Eastern ungulates,
+  Beyer2020, 120 ka to the present, with a focus area on Mediterranean Israel.
+  It is precomputed, because its inputs cannot be redistributed;
+  `vignettes/precompute.R` re-renders it.
 
 ## Citation
 
-If you use `richcast`, please cite the package plus the data sources you
-actually used — the IUCN Red List version, the relevant
-`pastclim` climate reconstruction, and Ecke et al. (2022) if you used
+Please cite the package and every data source you used: the IUCN Red List
+version, the palaeoclimate reconstruction, the sources behind any
+`zooarch_taxa()` list you relied on, and Ecke et al. (2022) if you used
 `rodent_traits`. `citation("richcast")` lists them.
 
 ## License
 
-MIT for the code. Bundled `rodent_traits` is CC BY 4.0 (Ecke et al. 2022).
-Data you supply remains under its own terms.
+MIT for the code. `rodent_traits` is CC BY 4.0 (Ecke et al. 2022). Data you
+supply remains under its own terms.

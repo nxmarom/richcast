@@ -1,4 +1,4 @@
-# richcast (development)
+# richcast 0.1.0
 
 ## Revised and simplified model
 
@@ -47,6 +47,14 @@
   returns cell-level suitability for every model over an area.
 * **`richness_at()`** predicts richness and lists the expected species at any
   coordinate and time.
+
+## Documentation
+
+* New precomputed vignette, `vignette("middle-east")`: Middle Eastern
+  ungulates on Beyer2020, 120 ka to present, with a focus area on
+  Mediterranean Israel. `vignettes/precompute.R` re-renders it.
+* README rewritten around the pipeline; PDF reference manual
+  (`richcast-manual.pdf`).
 
 ## Removed
 

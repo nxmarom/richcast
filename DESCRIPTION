@@ -1,6 +1,6 @@
 Package: richcast
 Title: Hindcast Species Distributions and Assemblage Richness Through Time
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R:
     person("Nimrod", "Marom", , "nxmarom@gmail.com", role = c("aut", "cre"))
 Description: Fits a species distribution model for every species near a
