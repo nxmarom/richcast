@@ -28,14 +28,14 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 packageVersion("richcast")
-#> [1] '0.0.0.9000'
+#> [1] '0.1.0'
 ```
 
 
 ``` r
 # Paneled step plots: richness on top, one panel per taxon below. Bands are
 # drawn as steps too; the top panel carries a Gaussian kernel smooth
-# (bandwidth `bw` ka) over its centre line.
+# (bandwidth `bw` ka) over the middle of its band.
 kernel_line <- function(d, bw = 10) {
   k <- stats::ksmooth(d$ka_bp, d$value, kernel = "normal", bandwidth = bw,
                       x.points = seq(min(d$ka_bp), max(d$ka_bp), by = 0.25))
@@ -56,6 +56,36 @@ stepify <- function(d, eps = 1e-4) {
             hi = rep(hi, each = 2))
 }
 
+# Strict and lenient richness, each divided by its own median over the
+# slices so the two cutoff rules share a scale.
+relative_richness <- function(d) {
+  d |>
+    transmute(ka_bp, strict = strict / median(strict),
+              lenient = lenient / median(lenient))
+}
+
+# The top panel: each rule's relative richness smoothed separately with a
+# Gaussian kernel, the band spanning the two smoothed lines.
+top_layers <- function(top, panel, bw) {
+  sm <- tibble(
+    ka_bp   = kernel_line(transmute(top, ka_bp, value = strict), bw)$ka_bp,
+    strict  = kernel_line(transmute(top, ka_bp, value = strict), bw)$value,
+    lenient = kernel_line(transmute(top, ka_bp, value = lenient), bw)$value,
+    panel   = panel
+  )
+  lines <- sm |>
+    pivot_longer(c(strict, lenient), names_to = "rule", values_to = "value") |>
+    mutate(rule = factor(rule, c("strict", "lenient"),
+                         c("strict (p10)", "lenient (TSS)")))
+  list(
+    geom_ribbon(data = sm, aes(ka_bp, ymin = pmin(strict, lenient),
+                               ymax = pmax(strict, lenient)),
+                inherit.aes = FALSE, fill = "steelblue", alpha = 0.3),
+    geom_line(data = lines, aes(ka_bp, value, linetype = rule),
+              inherit.aes = FALSE, colour = "steelblue4", linewidth = 0.8)
+  )
+}
+
 panel_plot <- function(top, taxa, top_label, ylab, title, band_fill,
                        taxa_limits = c(0, 1), bw = 10, caption = NULL) {
   sp_order <- taxa |>
@@ -64,30 +94,31 @@ panel_plot <- function(top, taxa, top_label, ylab, title, band_fill,
     arrange(desc(s)) |>
     pull(panel)
   levs <- c(top_label, sp_order)
-  top  <- mutate(top, panel = top_label)
-  both <- bind_rows(top, taxa) |> mutate(panel = factor(panel, levs))
+  taxa <- mutate(taxa, panel = factor(panel, levs))
   limits <- expand_grid(panel = factor(sp_order, levs), ka_bp = 0,
                         value = taxa_limits)
-  bands <- stepify(filter(both, !is.na(lo), !is.na(hi)))
-  kern  <- kernel_line(top, bw) |> mutate(panel = factor(top_label, levs))
+  bands <- stepify(filter(taxa, !is.na(lo), !is.na(hi)))
 
-  ggplot(both, aes(ka_bp, value)) +
+  ggplot(taxa, aes(ka_bp, value)) +
     geom_blank(data = limits) +
+    top_layers(top, factor(top_label, levs), bw) +
     geom_ribbon(data = bands, aes(ka_bp, ymin = lo, ymax = hi),
                 inherit.aes = FALSE, fill = band_fill, alpha = 0.35) +
     geom_step(direction = "mid", alpha = 0.55) +
-    geom_line(data = kern, colour = "steelblue4", linewidth = 0.9) +
-    facet_wrap(~panel, ncol = 1, scales = "free_y", strip.position = "right") +
+    facet_wrap(~panel, ncol = 1, scales = "free_y", strip.position = "right",
+               drop = FALSE) +
     scale_x_reverse() +
+    scale_linetype_manual(values = c("solid", "dashed"), name = NULL) +
     labs(x = "ka BP", y = ylab, title = title,
-         caption = paste0(caption, "Blue: Gaussian kernel smooth, bandwidth ",
-                          bw, " ka.")) +
+         caption = paste0(caption, "\nTop lines: Gaussian kernel smooth of each rule, bandwidth ",
+                          bw, " ka; the band spans the two.")) +
     theme_minimal() +
     theme(strip.text.y.right = element_text(angle = 0, hjust = 0,
                                             face = "italic"),
           panel.border = element_rect(fill = NA, colour = "grey75"),
           panel.spacing.y = unit(4, "pt"),
-          plot.caption = element_text(hjust = 0))
+          plot.caption = element_text(hjust = 0),
+          legend.position = "top")
 }
 ```
 
@@ -465,9 +496,11 @@ rich |>
 #> # ℹ 62 more rows
 ```
 
-Top panel: mean taxa per cell, as a band from strict to lenient, with the
-threshold-free expected richness as the stepped line and its kernel smooth
-in blue. Below: the share of the region's land cells each taxon occupies,
+Top panel: mean richness as a band between the strict (p10) and lenient (TSS)
+counts. Each count is first divided by its own median across all slices, so
+the two rules are put on one scale: 1 is that rule's typical richness, 1.1 is
+10% above it. Each rule is then smoothed with a Gaussian kernel (solid:
+strict, dashed: lenient), and the band spans the two smoothed lines. Below: the share of the region's land cells each taxon occupies,
 the line at the strict threshold and the band reaching up to the lenient one.
 
 
@@ -482,14 +515,14 @@ occupancy <- bind_rows(lapply(slice_keys, function(k) {
   transmute(ka_bp, value, lo, hi, panel = gsub("_", " ", taxon))
 
 panel_plot(
-  top   = rich |> transmute(ka_bp, value = expected, lo = strict, hi = lenient),
+  top   = rich |> relative_richness(),
   taxa  = occupancy,
-  top_label = "Mean richness",
-  ylab  = "Taxa per cell (top) / share of region occupied",
+  top_label = "Relative richness",
+  ylab  = "Relative richness (top) / share of region occupied",
   title = "Middle East",
   band_fill = "grey40",
   taxa_limits = c(0, NA),
-  caption = "Band: strict (p10) to lenient (TSS) presence. Top line: expected richness. "
+  caption = "Top: strict (p10) and lenient (TSS) mean richness per cell, each divided by its own median.\nTaxon bands: strict to lenient share occupied."
 )
 ```
 
@@ -597,8 +630,9 @@ fa_rich |>
 #> # ℹ 62 more rows
 ```
 
-Top panel: taxa present in the focus area, as a band from strict to lenient,
-with expected richness as the stepped line and its kernel smooth in blue.
+Top panel: taxa present in the focus area, as a band between the strict and
+lenient counts, each divided by its own median across slices and smoothed
+with a Gaussian kernel (solid: strict, dashed: lenient).
 Below, each taxon's ensemble suitability; the red band runs from its TSS
 threshold (lenient) up to its p10 threshold (strict). Above the band the
 taxon is present, inside it marginal, below it absent.
@@ -606,14 +640,14 @@ taxon is present, inside it marginal, below it absent.
 
 ``` r
 panel_plot(
-  top   = fa_rich |> transmute(ka_bp, value = expected, lo = strict, hi = lenient),
+  top   = fa_rich |> relative_richness(),
   taxa  = fa_species |> transmute(ka_bp, value = suitability, lo = tss, hi = p10,
                                   panel = gsub("_", " ", taxon)),
-  top_label = "Richness",
-  ylab  = "Taxa (top) / ensemble suitability",
+  top_label = "Relative richness",
+  ylab  = "Relative richness (top) / ensemble suitability",
   title = "Focus area: Mediterranean Israel, 2 x 2 cells",
   band_fill = "firebrick",
-  caption = "Top band: strict (p10) to lenient (TSS) richness; line: expected richness. Taxon bands: TSS to p10 threshold. "
+  caption = "Top: strict (p10) and lenient (TSS) richness, each divided by its own median.\nTaxon bands: TSS to p10 threshold."
 )
 ```
 
@@ -657,8 +691,7 @@ sessionInfo()
 #> [1] stats     graphics  grDevices utils     datasets  methods   base     
 #> 
 #> other attached packages:
-#> [1] ggplot2_4.0.3       tidyr_1.3.2         dplyr_1.2.1        
-#> [4] richcast_0.0.0.9000
+#> [1] ggplot2_4.0.3  tidyr_1.3.2    dplyr_1.2.1    richcast_0.1.0
 #> 
 #> loaded via a namespace (and not attached):
 #>  [1] gtable_0.3.6                 compiler_4.6.1              

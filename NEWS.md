@@ -53,6 +53,9 @@
 * New precomputed vignette, `vignette("middle-east")`: Middle Eastern
   ungulates on Beyer2020, 120 ka to present, with a focus area on
   Mediterranean Israel. `vignettes/precompute.R` re-renders it.
+  Richness is shown as a band between the strict (p10) and lenient (TSS)
+  counts, each divided by its own median and kernel-smoothed separately;
+  each taxon's panel shows its own strict-to-lenient band.
 * README rewritten around the pipeline; PDF reference manual
   (`richcast-manual.pdf`).
 
