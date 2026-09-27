@@ -519,7 +519,8 @@ taxa_of <- function(x) {
 #' species that are their own taxon pass through unchanged.
 #' @noRd
 collapse_taxa <- function(tbl, taxa, by) {
-  if (is.null(taxa) || all(lengths(taxa) == 1 & names(taxa) == unlist(taxa))) {
+  if (is.null(taxa) ||
+      all(vapply(names(taxa), function(t) identical(taxa[[t]], t), logical(1)))) {
     return(tbl)
   }
   lookup <- unlist(lapply(names(taxa), function(tx) {
