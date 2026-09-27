@@ -447,67 +447,6 @@ print.richcast_db <- function(x, ...) {
   NextMethod()
 }
 
-#' Merge several species into one taxon
-#'
-#' For taxa that cannot be told apart in the record being modelled -- as
-#' fallow deer are in zooarchaeological assemblages, where *Dama dama* and
-#' *D. mesopotamica* are rarely separable -- their ranges are unioned into a
-#' single taxon, which is then modelled as one species.
-#'
-#' @param db A `richcast_db`.
-#' @param into Name of the merged taxon, e.g. `"Dama_sp"`.
-#' @param from Species to merge. Those not in `db` are ignored, so the call
-#'   is safe to repeat; with none present, `db` is returned unchanged.
-#' @param quiet Suppress the report.
-#' @return A `richcast_db` with the `from` rows replaced by one `into` row.
-#'   Trait columns, if any, are taken from the first merged species.
-#' @examples
-#' db <- build_taxon_db(
-#'   sf::st_sf(
-#'     species = c("Dama_dama", "Dama_mesopotamica"),
-#'     geometry = sf::st_sfc(
-#'       sf::st_polygon(list(cbind(c(0, 1, 1, 0, 0), c(0, 0, 1, 1, 0)))),
-#'       sf::st_polygon(list(cbind(c(2, 3, 3, 2, 2), c(0, 0, 1, 1, 0)))),
-#'       crs = 4326
-#'     )
-#'   ),
-#'   quiet = TRUE
-#' )
-#' merge_taxa(db, "Dama_sp", c("Dama_dama", "Dama_mesopotamica"))
-#' @export
-merge_taxa <- function(db, into, from, quiet = FALSE) {
-  into <- normalise_species(into)
-  from <- normalise_species(from)
-  hit <- db$species %in% from
-  if (!any(hit)) return(db)
-  merged <- db[which(hit)[1], ]
-  merged$species <- into
-  sf::st_geometry(merged) <- with_planar_fallback(
-    function() {
-      sf::st_make_valid(sf::st_union(sf::st_make_valid(sf::st_geometry(db[hit, ]))))
-    },
-    what = "union", quiet = quiet
-  )
-  if (!quiet) {
-    cli::cli_alert_info("Merged {.val {db$species[hit]}} into {.val {into}}.")
-  }
-  out <- rbind(db[!hit & db$species != into, ], merged)
-  class(out) <- class(db)
-  out
-}
-
-#' Apply the merges a zooarchaeological list calls for
-#' @noRd
-apply_taxon_merges <- function(db, taxa_tbl, quiet = FALSE) {
-  if (!"members" %in% names(taxa_tbl)) return(db)
-  for (i in which(!is.na(taxa_tbl$members) & nzchar(taxa_tbl$members))) {
-    db <- merge_taxa(db, taxa_tbl$species[i],
-                     strsplit(taxa_tbl$members[i], ";", fixed = TRUE)[[1]],
-                     quiet = quiet)
-  }
-  db
-}
-
 #' Filter a taxon database
 #'
 #' A thin, self-documenting wrapper around [dplyr::filter()] that reports how

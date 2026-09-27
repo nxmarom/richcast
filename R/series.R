@@ -22,12 +22,19 @@
 #' @param climate A climate source from [climate_dir()] or [pastclim_climate()].
 #' @param times Numeric vector of years CE.
 #' @param region The modelling region, from [region()].
-#' @param species The species to model. `NULL` (the default) uses the
+#' @param species The taxa to model. `NULL` (the default) uses the
 #'   Pleistocene zooarchaeological list for the preset `region`
-#'   ([zooarch_taxa()]), merging the species it groups (see [merge_taxa()]);
-#'   otherwise a character vector of your own. Either way
-#'   the list is narrowed by [species_near()]: a species more than 10 degrees
-#'   from `region` is never trained.
+#'   ([zooarch_taxa()]); otherwise a character vector of your own. Either way
+#'   each species is narrowed by [species_near()]: a species more than 10
+#'   degrees from `region` is never trained.
+#' @param merge Taxa that count as one identification, as a named list:
+#'   `list(Dama_sp = c("Dama_dama", "Dama_mesopotamica"))`. A merged taxon
+#'   named in `species` has each member modelled separately, on its own range,
+#'   and the outputs combined: the taxon is present in a cell when any member
+#'   is, and its suitability there is that of the member furthest above its
+#'   own threshold. Modelling the union of the ranges instead lets the larger
+#'   range swamp the smaller one. `NULL` (the default) uses the merges the
+#'   region's zooarchaeological list defines.
 #' @param keep_surfaces Retain the richness surfaces, so maps can be drawn
 #'   afterwards. Stored wrapped, so the result survives `saveRDS()`.
 #' @param on_error `"warn"` skips a failing species and carries on; `"stop"`
@@ -38,12 +45,14 @@
 #' @return A `richcast_series`:
 #'   * `richness`: one row per slice (`present` first) with mean, median and
 #'     maximum richness over the region, and `mean_expected`.
-#'   * `species`: one row per species per slice. `cells` counts suitable cells
-#'     over the species' study extent, `region_cells` over the region, each
-#'     with its change from the present.
-#'   * `models`: one row per species with the fit diagnostics and the AUC and
-#'     Boyce index of each ensemble member and of the ensemble.
+#'   * `species`: one row per taxon per slice. `cells` counts suitable cells
+#'     over the study extent (summed over members for a merged taxon),
+#'     `region_cells` over the region, each with its change from the present.
+#'   * `models`: one row per fitted species, with the taxon it belongs to, the
+#'     fit diagnostics and the AUC and Boyce index of each ensemble member and
+#'     of the ensemble.
 #'   * `fits`: the fitted models, for [project_sdm()] and [richness_at()].
+#'   * `taxa`: which fitted species make up each taxon.
 #'   * `surfaces`: the richness surfaces; see [richness_surface()].
 #' @seealso [fit_sdm()], [richness_at()], [richness_surface()]
 #' @export
@@ -52,6 +61,7 @@ run_hindcast_series <- function(db,
                                 times,
                                 region,
                                 species = NULL,
+                                merge = NULL,
                                 keep_surfaces = TRUE,
                                 on_error = c("warn", "stop"),
                                 quiet = FALSE,
@@ -68,25 +78,29 @@ run_hindcast_series <- function(db,
 
   # The species list defaults to the region's zooarchaeological record, and
   # the 10-degree rule is not optional: a list can only narrow it.
-  if (is.null(species)) {
-    species <- default_taxa(region)
-    db <- apply_taxon_merges(db, zooarch_taxa(region), quiet = quiet)
-  }
-  targets <- species_near(db, region, quiet = quiet)
-  wanted <- normalise_species(species)
+  species <- normalise_species(species %||% default_taxa(region))
+  merge <- merge %||% zooarch_merges(region)
+  names(merge) <- normalise_species(names(merge))
+  taxa <- stats::setNames(lapply(species, function(t) {
+    normalise_species(merge[[t]] %||% t)
+  }), species)
+
+  wanted <- unique(unlist(taxa))
+  near <- species_near(db, region, quiet = quiet)
   missing <- setdiff(wanted, db$species)
   if (length(missing) > 0) {
     cli::cli_warn("Not in database, skipped: {.val {missing}}.")
   }
-  far <- setdiff(intersect(wanted, db$species), targets)
+  far <- setdiff(intersect(wanted, db$species), near)
   if (length(far) > 0) {
     cli::cli_warn(c(
       "More than {near_distance} deg from {.emph {region$label}}, skipped: {.val {far}}.",
       "i" = "Species are only trained for regions near their present range."
     ))
   }
-  targets <- intersect(wanted, targets)
-  if (length(targets) == 0) {
+  taxa <- lapply(taxa, intersect, near)
+  taxa <- taxa[lengths(taxa) > 0]
+  if (length(taxa) == 0) {
     rc_abort(c(
       "No species to model.",
       "i" = "No requested range lies within {near_distance} deg of {.emph {region$label}}."
@@ -94,52 +108,66 @@ run_hindcast_series <- function(db,
   }
 
   fits <- list()
+  fitted_taxa <- list()
   stacks <- NULL
   counts <- list()
 
   if (!quiet) {
-    cli::cli_progress_bar("Fitting and projecting", total = length(targets),
+    cli::cli_progress_bar("Fitting and projecting", total = length(taxa),
                           .envir = environment())
   }
 
-  for (sp in targets) {
+  for (tx in names(taxa)) {
     if (!quiet) cli::cli_progress_update(.envir = environment())
 
-    fitted <- try_step(
-      fit_sdm(db, sp, climate, quiet = quiet, ...),
-      what = "fit", species = sp, on_error = on_error
-    )
-    if (is.null(fitted)) next
-
-    # The richness grid is the climate grid cropped to the region, read once
-    # the first model says which variables exist.
-    if (is.null(stacks)) {
-      template <- climate_at(climate, "present", fitted$predictors[1],
-                             region_ext(region))
-      stacks <- stats::setNames(lapply(keys, function(k) new_stack(template)),
-                                keys)
-    }
-
-    projections <- list(present = list(suit = suitability(fitted),
-                                       cells = fitted$present_cells))
-    for (tt in times) {
-      proj <- try_step(
-        project_sdm(fitted, climate, tt, quiet = quiet),
-        what = paste("project onto", tt), species = sp, on_error = on_error
+    # Each member is fitted and projected on its own range; the taxon's
+    # projections are combined only when stacked.
+    member_proj <- list()
+    for (sp in taxa[[tx]]) {
+      fitted <- try_step(
+        fit_sdm(db, sp, climate, quiet = quiet, ...),
+        what = "fit", species = sp, on_error = on_error
       )
-      if (is.null(proj)) next
-      projections[[as.character(tt)]] <- list(suit = suitability(proj),
-                                              cells = proj$cells)
-    }
+      if (is.null(fitted)) next
 
-    fits[[sp]] <- fitted
-    for (k in names(projections)) {
-      stacks[[k]] <- stack_add(stacks[[k]], projections[[k]]$suit,
-                               fitted$threshold)
+      # The richness grid is the climate grid cropped to the region, read
+      # once the first model says which variables exist.
+      if (is.null(stacks)) {
+        template <- climate_at(climate, "present", fitted$predictors[1],
+                               region_ext(region))
+        stacks <- stats::setNames(lapply(keys, function(k) new_stack(template)),
+                                  keys)
+      }
+
+      projections <- list(present = list(suit = suitability(fitted),
+                                         cells = fitted$present_cells))
+      for (tt in times) {
+        proj <- try_step(
+          project_sdm(fitted, climate, tt, quiet = quiet),
+          what = paste("project onto", tt), species = sp, on_error = on_error
+        )
+        if (is.null(proj)) next
+        projections[[as.character(tt)]] <- list(suit = suitability(proj),
+                                                cells = proj$cells)
+      }
+      fits[[sp]] <- fitted
+      member_proj[[sp]] <- projections
+    }
+    if (length(member_proj) == 0) next
+    fitted_taxa[[tx]] <- names(member_proj)
+
+    for (k in keys) {
+      have <- Filter(function(p) !is.null(p[[k]]), member_proj)
+      if (length(have) == 0) next
+      stacks[[k]] <- stack_add(
+        stacks[[k]],
+        lapply(have, function(p) p[[k]]$suit),
+        vapply(names(have), function(sp) fits[[sp]]$threshold, numeric(1))
+      )
       counts[[length(counts) + 1L]] <- tibble::tibble(
-        species = sp,
+        species = tx,
         time = if (k == "present") NA_real_ else as.numeric(k),
-        cells = projections[[k]]$cells,
+        cells = sum(vapply(have, function(p) as.integer(p[[k]]$cells), integer(1))),
         region_cells = attr(stacks[[k]], "region_cells")
       )
     }
@@ -168,7 +196,7 @@ run_hindcast_series <- function(db,
   })
   richness <- dplyr::bind_rows(richness)
 
-  # --- Per-species change -------------------------------------------------
+  # --- Per-taxon change ---------------------------------------------------
   all_counts <- dplyr::bind_rows(counts)
   base <- all_counts[is.na(all_counts$time), ]
   species_tbl <- all_counts[!is.na(all_counts$time), ] |>
@@ -183,12 +211,20 @@ run_hindcast_series <- function(db,
     ) |>
     dplyr::arrange(.data$species, .data$time)
 
+  models <- models_table(fits)
+  taxon_of <- unlist(lapply(names(fitted_taxa), function(tx) {
+    stats::setNames(rep(tx, length(fitted_taxa[[tx]])), fitted_taxa[[tx]])
+  }))
+  models <- tibble::add_column(models, taxon = unname(taxon_of[models$species]),
+                               .after = "species")
+
   structure(
     list(
       richness = richness,
       species  = species_tbl,
-      models   = models_table(fits),
+      models   = models,
       fits     = fits,
+      taxa     = fitted_taxa,
       surfaces = surfaces,
       times    = times,
       region   = region
@@ -349,6 +385,7 @@ richness_at <- function(x, lon, lat, time = "present", climate) {
     }
   }
   species_tbl <- dplyr::bind_rows(sp_rows) |>
+    collapse_taxa(taxa_of(x), c("lon", "lat", "time")) |>
     dplyr::arrange(.data$time, .data$lon, .data$lat,
                    dplyr::desc(.data$suitability))
 
@@ -382,6 +419,7 @@ richness_at <- function(x, lon, lat, time = "present", climate) {
 #' `cells` records how many were evaluated.
 #'
 #' @param x A `richcast_series`, a single `richcast_sdm`, or a list of them.
+#'   For a series, merged taxa are reported once, as in [run_hindcast_series()].
 #' @param area The focus area, a [region()] box.
 #' @param time Year(s) CE, and/or `"present"`.
 #' @param climate The climate source the models were fitted with.
@@ -436,6 +474,7 @@ richness_in <- function(x, area, time = "present", climate) {
     }
   }
   species_tbl <- dplyr::bind_rows(sp_rows) |>
+    collapse_taxa(taxa_of(x), "time") |>
     dplyr::arrange(.data$time, dplyr::desc(.data$suitability))
 
   richness_tbl <- species_tbl |>
@@ -465,6 +504,35 @@ print.richcast_area <- function(x, ...) {
   }
   cli::cli_text("  {.code $richness} {.code $species}")
   invisible(x)
+}
+
+#' Which fitted species make up each taxon, if the object records it
+#' @noRd
+taxa_of <- function(x) {
+  if (inherits(x, "richcast_series")) x$taxa else NULL
+}
+
+#' Collapse member species rows to one row per merged taxon
+#'
+#' Within each group the member furthest above its own threshold stands for
+#' the taxon, so `present` stays exactly `suitability > threshold`. Rows of
+#' species that are their own taxon pass through unchanged.
+#' @noRd
+collapse_taxa <- function(tbl, taxa, by) {
+  if (is.null(taxa) || all(lengths(taxa) == 1 & names(taxa) == unlist(taxa))) {
+    return(tbl)
+  }
+  lookup <- unlist(lapply(names(taxa), function(tx) {
+    stats::setNames(rep(tx, length(taxa[[tx]])), taxa[[tx]])
+  }))
+  tbl$species <- dplyr::coalesce(unname(lookup[tbl$species]), tbl$species)
+  tbl$margin <- tbl$suitability - tbl$threshold
+  tbl |>
+    dplyr::group_by(dplyr::across(dplyr::all_of(c(by, "species")))) |>
+    dplyr::arrange(dplyr::desc(.data$margin), .by_group = TRUE) |>
+    dplyr::slice(1) |>
+    dplyr::ungroup() |>
+    dplyr::select(-"margin")
 }
 
 #' Fitted models from a series, a single model, or a list of models

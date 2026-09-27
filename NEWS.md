@@ -27,6 +27,11 @@
   entry); `species =` takes your own list instead. The Middle East list (14
   bovids, cervids, equids and wild boar) is compiled; the other presets need a list
   passed in until theirs are.
+* **Merged taxa**: `run_hindcast_series(merge = )` treats several species
+  as one identification (e.g. `Dama_sp` for *Dama dama* and
+  *D. mesopotamica*). Each member is modelled on its own range and the
+  outputs combined: the taxon is present wherever any member is. The Middle
+  East list defines this merge for fallow deer.
 * **Predictors** are the eight canonical bioclim variables (`bioclim_vars`:
   bio01, bio04, bio05, bio06, bio12, bio15, bio16, bio17), the default for
   both `fit_sdm()` and `prepare_climate()`. Other variables are refused.

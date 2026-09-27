@@ -42,9 +42,9 @@
 #'
 #' Older names are mapped to current IUCN taxonomy: *Capra ibex* from the
 #' Negev to *Capra nubiana*, and *Ovis orientalis* to *Ovis gmelini*. Fallow
-#' deer are one taxon, `Dama_sp`, merging the ranges of *Dama dama* and
-#' *D. mesopotamica* (the `members` column), since the two are not reliably
-#' separated in the record. *Equus
+#' deer are one taxon, `Dama_sp`, since *Dama dama* and *D. mesopotamica* are
+#' not reliably separated in the record; the `members` column names the two,
+#' which [run_hindcast_series()] models separately and then combines. *Equus
 #' ferus*, *E. africanus* and *Gazella arabica* are reported in the sources
 #' but left out on review. Wild boar needs its
 #' own IUCN range polygon alongside the ungulate downloads.
@@ -81,4 +81,13 @@ default_taxa <- function(region) {
     ))
   }
   tbl$species
+}
+
+#' Merged taxa defined by a region's list, as a named list
+#' @noRd
+zooarch_merges <- function(region) {
+  tbl <- zooarch_taxa(region)
+  if (!"members" %in% names(tbl)) return(list())
+  tbl <- tbl[!is.na(tbl$members) & nzchar(tbl$members), ]
+  stats::setNames(strsplit(tbl$members, ";", fixed = TRUE), tbl$species)
 }

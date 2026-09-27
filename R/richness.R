@@ -73,25 +73,44 @@ new_stack <- function(template) {
   list(richness = zero, expected = zero, covered = zero, n = 0L)
 }
 
-#' Add one species' suitability surface to a slice's richness
+#' Add one taxon's suitability to a slice's richness
 #'
-#' @return The updated accumulator, with `region_cells` -- this species'
+#' A taxon is one species or several merged ones. For a merged taxon each
+#' member's surface is laid on the grid, and in every cell the member furthest
+#' above its own threshold stands for the taxon: the taxon is present where
+#' any member is, and contributes that member's suitability to `expected`.
+#'
+#' @param suits List of member suitability `SpatRaster`s.
+#' @param thresholds Numeric vector of the members' thresholds.
+#' @return The updated accumulator, with `region_cells` -- this taxon's
 #'   above-threshold cells inside the region -- as an attribute.
 #' @noRd
-stack_add <- function(acc, suit, threshold) {
-  s <- tryCatch(
-    terra::resample(suit, acc$richness, method = "near"),
+stack_add <- function(acc, suits, thresholds) {
+  if (inherits(suits, "SpatRaster")) suits <- list(suits)
+  on_grid <- lapply(suits, function(s) tryCatch(
+    terra::resample(s, acc$richness, method = "near"),
     error = function(e) NULL
-  )
-  if (is.null(s)) {
-    # The species' study extent does not reach the region at all.
+  ))
+  keep <- !vapply(on_grid, is.null, logical(1))
+  if (!any(keep)) {
+    # No member's study extent reaches the region at all.
     attr(acc, "region_cells") <- 0L
     return(acc)
   }
-  present <- s > threshold
+  s <- terra::rast(on_grid[keep])
+  thr <- unname(thresholds[keep])
+  if (terra::nlyr(s) == 1) {
+    suit <- s
+    present <- s > thr
+  } else {
+    margin <- s - thr
+    best <- terra::which.max(margin)
+    suit <- terra::selectRange(s, best)
+    present <- terra::app(margin, max, na.rm = TRUE) > 0
+  }
   acc$richness <- acc$richness + terra::ifel(is.na(present), 0, present)
-  acc$expected <- acc$expected + terra::ifel(is.na(s), 0, s)
-  acc$covered  <- acc$covered + !is.na(s)
+  acc$expected <- acc$expected + terra::ifel(is.na(suit), 0, suit)
+  acc$covered  <- acc$covered + !is.na(suit)
   acc$n <- acc$n + 1L
   n <- terra::global(present, "sum", na.rm = TRUE)[1, 1]
   attr(acc, "region_cells") <- if (is.na(n)) 0L else as.integer(n)

@@ -10,6 +10,7 @@ run_hindcast_series(
   times,
   region,
   species = NULL,
+  merge = NULL,
   keep_surfaces = TRUE,
   on_error = c("warn", "stop"),
   quiet = FALSE,
@@ -25,12 +26,20 @@ run_hindcast_series(
 
 \item{region}{The modelling region, from \code{\link[=region]{region()}}.}
 
-\item{species}{The species to model. \code{NULL} (the default) uses the
+\item{species}{The taxa to model. \code{NULL} (the default) uses the
 Pleistocene zooarchaeological list for the preset \code{region}
-(\code{\link[=zooarch_taxa]{zooarch_taxa()}}), merging the species it groups (see \code{\link[=merge_taxa]{merge_taxa()}});
-otherwise a character vector of your own. Either way
-the list is narrowed by \code{\link[=species_near]{species_near()}}: a species more than 10 degrees
-from \code{region} is never trained.}
+(\code{\link[=zooarch_taxa]{zooarch_taxa()}}); otherwise a character vector of your own. Either way
+each species is narrowed by \code{\link[=species_near]{species_near()}}: a species more than 10
+degrees from \code{region} is never trained.}
+
+\item{merge}{Taxa that count as one identification, as a named list:
+\code{list(Dama_sp = c("Dama_dama", "Dama_mesopotamica"))}. A merged taxon
+named in \code{species} has each member modelled separately, on its own range,
+and the outputs combined: the taxon is present in a cell when any member
+is, and its suitability there is that of the member furthest above its
+own threshold. Modelling the union of the ranges instead lets the larger
+range swamp the smaller one. \code{NULL} (the default) uses the merges the
+region's zooarchaeological list defines.}
 
 \item{keep_surfaces}{Retain the richness surfaces, so maps can be drawn
 afterwards. Stored wrapped, so the result survives \code{saveRDS()}.}
@@ -48,12 +57,14 @@ A \code{richcast_series}:
 \itemize{
 \item \code{richness}: one row per slice (\code{present} first) with mean, median and
 maximum richness over the region, and \code{mean_expected}.
-\item \code{species}: one row per species per slice. \code{cells} counts suitable cells
-over the species' study extent, \code{region_cells} over the region, each
-with its change from the present.
-\item \code{models}: one row per species with the fit diagnostics and the AUC and
-Boyce index of each ensemble member and of the ensemble.
+\item \code{species}: one row per taxon per slice. \code{cells} counts suitable cells
+over the study extent (summed over members for a merged taxon),
+\code{region_cells} over the region, each with its change from the present.
+\item \code{models}: one row per fitted species, with the taxon it belongs to, the
+fit diagnostics and the AUC and Boyce index of each ensemble member and
+of the ensemble.
 \item \code{fits}: the fitted models, for \code{\link[=project_sdm]{project_sdm()}} and \code{\link[=richness_at]{richness_at()}}.
+\item \code{taxa}: which fitted species make up each taxon.
 \item \code{surfaces}: the richness surfaces; see \code{\link[=richness_surface]{richness_surface()}}.
 }
 }

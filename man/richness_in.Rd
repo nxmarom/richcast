@@ -7,7 +7,8 @@
 richness_in(x, area, time = "present", climate)
 }
 \arguments{
-\item{x}{A \code{richcast_series}, a single \code{richcast_sdm}, or a list of them.}
+\item{x}{A \code{richcast_series}, a single \code{richcast_sdm}, or a list of them.
+For a series, merged taxa are reported once, as in \code{\link[=run_hindcast_series]{run_hindcast_series()}}.}
 
 \item{area}{The focus area, a \code{\link[=region]{region()}} box.}
 

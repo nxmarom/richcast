@@ -46,9 +46,9 @@ Ghar-e Boof (southern Zagros). \emph{Scientific Reports}, 13, 19006.
 
 Older names are mapped to current IUCN taxonomy: \emph{Capra ibex} from the
 Negev to \emph{Capra nubiana}, and \emph{Ovis orientalis} to \emph{Ovis gmelini}. Fallow
-deer are one taxon, \code{Dama_sp}, merging the ranges of \emph{Dama dama} and
-\emph{D. mesopotamica} (the \code{members} column), since the two are not reliably
-separated in the record. \emph{Equus
+deer are one taxon, \code{Dama_sp}, since \emph{Dama dama} and \emph{D. mesopotamica} are
+not reliably separated in the record; the \code{members} column names the two,
+which \code{\link[=run_hindcast_series]{run_hindcast_series()}} models separately and then combines. \emph{Equus
 ferus}, \emph{E. africanus} and \emph{Gazella arabica} are reported in the sources
 but left out on review. Wild boar needs its
 own IUCN range polygon alongside the ungulate downloads.

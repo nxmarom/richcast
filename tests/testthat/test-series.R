@@ -237,3 +237,35 @@ test_that("richness_in pools a block of cells and agrees with richness_at", {
                dplyr::coalesce(fa$species$suitability > fa$species$threshold, FALSE))
   expect_error(richness_in(x$res, c(2, 3, 2, 3), climate = x$clim), "region")
 })
+
+test_that("merged taxa are modelled per member and counted once", {
+  skip_if_not_installed("maxnet")
+  skip_if_not_installed("ranger")
+  dir <- withr::local_tempdir()
+  clim <- structured_climate(dir, times = 850)
+  res <- run_hindcast_series(
+    two_species_db(), clim, times = 850, region = region(c(0, 10, 0, 10)),
+    species = "Genus_sp", merge = list(Genus_sp = c("Genus_low", "Genus_high")),
+    land = fake_land(), num_trees = 50, quiet = TRUE
+  )
+  # Each member keeps its own model...
+  expect_setequal(names(res$fits), c("Genus_low", "Genus_high"))
+  expect_equal(res$taxa, list(Genus_sp = c("Genus_low", "Genus_high")))
+  expect_equal(unique(res$models$taxon), "Genus_sp")
+  # ...but the taxon counts once, present wherever either member is.
+  s <- richness_surface(res, "present")
+  expect_lte(max(terra::values(s), na.rm = TRUE), 1)
+  either <- Reduce(`|`, lapply(res$fits, function(f) {
+    b <- terra::resample(suitability(f, binary = TRUE), s, method = "near")
+    terra::ifel(is.na(b), 0, b) > 0
+  }))
+  v <- terra::values(s, mat = FALSE)
+  ok <- !is.na(v)
+  expect_equal(v[ok], as.numeric(terra::values(either, mat = FALSE)[ok]))
+  expect_equal(unique(res$species$species), "Genus_sp")
+
+  pt <- richness_at(res, c(2.25, 7.75), c(2.25, 7.75), climate = clim)
+  expect_equal(unique(pt$species$species), "Genus_sp")
+  expect_equal(pt$richness$richness, c(1L, 1L))
+  expect_equal(pt$species$present, pt$species$suitability > pt$species$threshold)
+})

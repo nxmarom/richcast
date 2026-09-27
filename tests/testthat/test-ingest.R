@@ -272,21 +272,3 @@ test_that("point geometry is refused", {
                    geometry = sf::st_sfc(sf::st_point(c(0, 0)), crs = 4326))
   expect_error(build_taxon_db(pts, quiet = TRUE), "must be polygons")
 })
-
-test_that("merge_taxa unions ranges into one taxon and is safe to repeat", {
-  db <- build_taxon_db(
-    sf::st_sf(species = c("Dama_dama", "Dama_mesopotamica", "Genus_other"),
-              geometry = sf::st_sfc(square(0, 0), square(5, 0), square(9, 9),
-                                    crs = 4326)),
-    quiet = TRUE
-  )
-  m <- merge_taxa(db, "Dama_sp", c("Dama_dama", "Dama_mesopotamica"), quiet = TRUE)
-  expect_s3_class(m, "richcast_db")
-  expect_setequal(m$species, c("Dama_sp", "Genus_other"))
-  bb <- sf::st_bbox(m[m$species == "Dama_sp", ])
-  expect_equal(as.numeric(bb[c("xmin", "xmax")]), c(0, 6))
-  again <- merge_taxa(m, "Dama_sp", c("Dama_dama", "Dama_mesopotamica"), quiet = TRUE)
-  expect_equal(nrow(again), 2)
-  expect_message(merge_taxa(db, "Dama_sp", c("Dama_dama", "Dama_mesopotamica")),
-                 "Merged")
-})
