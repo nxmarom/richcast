@@ -1,3 +1,15 @@
+# richcast (development version)
+
+* **Fossil presences**: `fit_sdm()` and `run_hindcast_series()` take an
+  optional `fossils` table of dated occurrences, read by the new
+  `fossil_presences()` (a `slices` column of `"ka:prob;..."`, or long form
+  with `ka_bp` and `weight`). Each species gets `n_fossil` draws (as many as
+  its pseudo-presences by default), spread evenly over the dated units, each
+  taking the climate of a slice drawn by the unit's probabilities. Matching
+  background is drawn from the same slices. The study extent grows to take
+  in the sites. The `p10` threshold and the hold-out metrics use the range's
+  points only. Without `fossils`, fitting is unchanged.
+
 # richcast 0.1.0
 
 ## Revised and simplified model
