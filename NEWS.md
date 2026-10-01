@@ -9,6 +9,10 @@
   background is drawn from the same slices. The study extent grows to take
   in the sites. The `p10` threshold and the hold-out metrics use the range's
   points only. Without `fossils`, fitting is unchanged.
+* Fossil data are not bundled. The deer records used to develop the feature
+  come from the ROCEEH Out of Africa Database (ROAD; Kandel et al. 2023,
+  CC BY-SA 4.0) via the roadDB package; both are now in
+  `citation("richcast")` and `?fossil_presences`.
 
 # richcast 0.1.0
 

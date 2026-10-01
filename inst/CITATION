@@ -1,7 +1,8 @@
 citHeader(
   "To cite richcast, cite the package below plus every data source you used: ",
   "the IUCN Red List version, the pastclim climate ",
-  "reconstruction, and Ecke et al. (2022) if you used rodent_traits."
+  "reconstruction, Ecke et al. (2022) if you used rodent_traits, and ",
+  "Kandel et al. (2023) if you trained on fossil occurrences from ROAD."
 )
 
 bibentry(
@@ -31,4 +32,48 @@ bibentry(
   volume   = "13",
   pages    = "7532",
   doi      = "10.1038/s41467-022-35273-7"
+)
+
+bibentry(
+  bibtype  = "Article",
+  header   = "Fossil occurrences from the ROCEEH Out of Africa Database (ROAD), used with fit_sdm(fossils = ), should be cited as (ROAD content is CC BY-SA 4.0):",
+  title    = "The ROCEEH Out of Africa Database (ROAD): A large-scale research database serves as an indispensable tool for human evolutionary studies",
+  author   = c(
+    person(c("A.", "W."), "Kandel"),
+    person("C.", "Sommer"),
+    person("Z.", "Kanaeva"),
+    person("M.", "Bolus"),
+    person(c("A.", "A."), "Bruch"),
+    person("C.", "Groth"),
+    person(c("M.", "N."), "Haidle"),
+    person("C.", "Hertler"),
+    person("J.", "Heß"),
+    person("M.", "Malina"),
+    person("M.", "Märker"),
+    person("V.", "Hochschild"),
+    person("V.", "Mosbrugger"),
+    person("F.", "Schrenk"),
+    person(c("N.", "J."), "Conard")
+  ),
+  journal  = "PLOS ONE",
+  year     = "2023",
+  volume   = "18",
+  number   = "8",
+  pages    = "e0289513",
+  doi      = "10.1371/journal.pone.0289513"
+)
+
+bibentry(
+  bibtype  = "Manual",
+  header   = "ROAD data retrieved with the roadDB package:",
+  title    = "roadDB: Access Data from the ROCEEH Out of Africa Database (ROAD)",
+  author   = c(
+    person("Zara", "Kanaeva"),
+    person("Jesper", "Borre Pedersen"),
+    person("Christian", "Sommer"),
+    person(c("Timo", "Patrick"), "Streicher")
+  ),
+  year     = "2026",
+  note     = "R package version 0.2.0",
+  doi      = "10.32614/CRAN.package.roadDB"
 )

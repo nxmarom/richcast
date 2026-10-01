@@ -30,9 +30,31 @@
 #' slice; without it, the eight cells around the site are searched. Other
 #' columns, such as `locality`, are kept.
 #'
+#' # Data sources
+#'
+#' richcast ships no fossil data. A natural source is the ROCEEH Out of
+#' Africa Database (ROAD; Kandel et al. 2023), which can be queried from R
+#' with the \pkg{roadDB} package (Kanaeva et al. 2026); the dated red deer
+#' and roe deer occurrences used for the Middle East analysis were compiled
+#' from ROAD that way. ROAD content is published under CC BY-SA 4.0: cite
+#' Kandel et al. (2023) whenever you use it, and share any table derived
+#' from it under the same licence. The table in the example below is made
+#' up.
+#'
 #' @param x A data frame, or a path to a CSV file.
 #' @return A tibble with `species`, `unit_id`, `lon`, `lat`, `block`, `ka_bp`
 #'   and `prob`, plus any other input columns.
+#' @references Kandel, A. W., Sommer, C., Kanaeva, Z., Bolus, M., Bruch, A.
+#'   A., Groth, C., Haidle, M. N., Hertler, C., Heß, J., Malina, M., Märker,
+#'   M., Hochschild, V., Mosbrugger, V., Schrenk, F., & Conard, N. J. (2023).
+#'   The ROCEEH Out of Africa Database (ROAD): A large-scale research database
+#'   serves as an indispensable tool for human evolutionary studies. *PLOS
+#'   ONE*, 18(8), e0289513. \doi{10.1371/journal.pone.0289513}
+#'
+#'   Kanaeva, Z., Borre Pedersen, J., Sommer, C., & Streicher, T. P. (2026).
+#'   *roadDB: Access Data from the ROCEEH Out of Africa Database (ROAD)*. R
+#'   package version 0.2.0. \doi{10.32614/CRAN.package.roadDB}
+#' @seealso [fit_sdm()] ("Fossil presences")
 #' @examples
 #' fossil_presences(data.frame(species = "Cervus elaphus", lon = 35, lat = 32.6,
 #'                             slices = "34:0.8;36:0.2"))
