@@ -17,6 +17,8 @@ fit_sdm(
   num_trees = 500,
   seed = 123,
   land = NULL,
+  fossils = NULL,
+  n_fossil = NULL,
   quiet = FALSE
 )
 }
@@ -49,12 +51,20 @@ proportion of the box's diagonal.}
 restrict the background to land. Defaults to Natural Earth at medium
 resolution.}
 
+\item{fossils}{Optional dated fossil occurrences, in any form
+\code{\link[=fossil_presences]{fossil_presences()}} accepts. Rows for other species are ignored.}
+
+\item{n_fossil}{Number of fossil presences to draw; defaults to
+\code{n_presence}.}
+
 \item{quiet}{Suppress progress messages.}
 }
 \value{
 A \code{richcast_sdm}. \code{metrics} holds AUC and Boyce for \code{maxent}, \code{rf}
 and \code{ensemble}; \code{range_cells} is the number of grid cells with climate the
-range covers.
+range covers. A model fitted with fossils also records \code{n_fossil},
+\code{n_fossil_background}, \code{fossil_units} and \code{fossil_draws} (the unit, age
+and slice of every fossil presence).
 }
 \description{
 Fits an ensemble of a random forest (via \pkg{ranger}) and MaxEnt (via
@@ -103,6 +113,30 @@ the model says suitability is high; near 0 means no better than random.
 
 The final members are then refitted on all the points. Set \code{test_frac = 0}
 to skip evaluation.
+}
+
+\section{Fossil presences}{
+Where a species has been extirpated, its present-day range no longer shows
+every climate it lived in. \code{fossils} adds dated occurrences (see
+\code{\link[=fossil_presences]{fossil_presences()}}) as presences under the climate of their own time:
+\itemize{
+\item \code{n_fossil} draws (as many as \code{n_presence} by default, so fossils and the
+range carry equal weight) are spread evenly over the dated units. Each
+draw picks one of the unit's slices by its probability and takes that
+slice's climate at the site, so dating uncertainty enters as spread
+across slices. A site cell without climate in a slice (often a coast)
+takes the nearest cell with climate in its block.
+\item Background in the same proportion as for the range (1000 for 100 draws
+by default) is drawn uniformly over land in the study extent from the
+same slices, so the model is not taught to tell past climate from
+present.
+\item The study extent is the bounding box of the range and the fossil sites
+together, widened by \code{buffer} as usual.
+\item The \code{p10} threshold is taken from the range's pseudo-presences only, and
+the hold-out is drawn from the range's presences and background only,
+with every fossil point kept in training. The metrics therefore show how
+well the model still fits the present-day range.
+}
 }
 
 \references{

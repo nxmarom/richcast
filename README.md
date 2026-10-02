@@ -150,6 +150,12 @@ suitabilities, which needs no threshold. `richness_surface()` and
 * **Climate** comes through `pastclim`, which handles the Beyer2020,
   CHELSA-TraCE21k and WorldClim downloads.
 * **Traits** for rodents ship as `rodent_traits` (Ecke et al. 2022, CC BY 4.0).
+* **Fossil occurrences**, for `fit_sdm(fossils = )`, are yours to supply;
+  none ship. The dated deer records behind the fossil-calibrated Middle East
+  runs come from the ROCEEH Out of Africa Database (ROAD; Kandel et al.
+  2023), retrieved with the [roadDB](https://doi.org/10.32614/CRAN.package.roadDB)
+  package. ROAD content is CC BY-SA 4.0: cite Kandel et al. (2023) and share
+  derived tables under the same licence.
 
 ## Vignettes
 
@@ -163,8 +169,9 @@ suitabilities, which needs no threshold. `richness_surface()` and
 
 Please cite the package and every data source you used: the IUCN Red List
 version, the palaeoclimate reconstruction, the sources behind any
-`zooarch_taxa()` list you relied on, and Ecke et al. (2022) if you used
-`rodent_traits`. `citation("richcast")` lists them.
+`zooarch_taxa()` list you relied on, Ecke et al. (2022) if you used
+`rodent_traits`, and Kandel et al. (2023) and roadDB if you trained on
+fossil occurrences from ROAD. `citation("richcast")` lists them.
 
 ## How this was built
 

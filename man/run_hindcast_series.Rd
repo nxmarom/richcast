@@ -11,6 +11,7 @@ run_hindcast_series(
   region,
   species = NULL,
   merge = NULL,
+  fossils = NULL,
   keep_surfaces = TRUE,
   on_error = c("warn", "stop"),
   quiet = FALSE,
@@ -40,6 +41,11 @@ is, and its suitability there is that of the member furthest above its
 own threshold. Modelling the union of the ranges instead lets the larger
 range swamp the smaller one. \code{NULL} (the default) uses the merges the
 region's zooarchaeological list defines.}
+
+\item{fossils}{Optional dated fossil occurrences, in any form
+\code{\link[=fossil_presences]{fossil_presences()}} accepts, added to the training data of the species
+they name (see "Fossil presences" in \code{\link[=fit_sdm]{fit_sdm()}}). Name the fitted
+species, not a merged taxon.}
 
 \item{keep_surfaces}{Retain the richness surfaces, so maps can be drawn
 afterwards. Stored wrapped, so the result survives \code{saveRDS()}.}

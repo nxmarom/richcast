@@ -81,6 +81,29 @@ bioclim_vars <- c("bio01", "bio04", "bio05", "bio06",
 #' The final members are then refitted on all the points. Set `test_frac = 0`
 #' to skip evaluation.
 #'
+#' # Fossil presences
+#'
+#' Where a species has been extirpated, its present-day range no longer shows
+#' every climate it lived in. `fossils` adds dated occurrences (see
+#' [fossil_presences()]) as presences under the climate of their own time:
+#'
+#' * `n_fossil` draws (as many as `n_presence` by default, so fossils and the
+#'   range carry equal weight) are spread evenly over the dated units. Each
+#'   draw picks one of the unit's slices by its probability and takes that
+#'   slice's climate at the site, so dating uncertainty enters as spread
+#'   across slices. A site cell without climate in a slice (often a coast)
+#'   takes the nearest cell with climate in its block.
+#' * Background in the same proportion as for the range (1000 for 100 draws
+#'   by default) is drawn uniformly over land in the study extent from the
+#'   same slices, so the model is not taught to tell past climate from
+#'   present.
+#' * The study extent is the bounding box of the range and the fossil sites
+#'   together, widened by `buffer` as usual.
+#' * The `p10` threshold is taken from the range's pseudo-presences only, and
+#'   the hold-out is drawn from the range's presences and background only,
+#'   with every fossil point kept in training. The metrics therefore show how
+#'   well the model still fits the present-day range.
+#'
 #' @param db A `richcast_db` from [build_taxon_db()].
 #' @param species Species name, or a row index into `db`.
 #' @param climate A climate source from [climate_dir()] or [pastclim_climate()].
@@ -94,13 +117,19 @@ bioclim_vars <- c("bio01", "bio04", "bio05", "bio06",
 #' @param test_frac Share of presences and background held out for evaluation.
 #' @param num_trees Trees in the random forest.
 #' @param seed Random seed for sampling, the hold-out split and the forest.
+#' @param fossils Optional dated fossil occurrences, in any form
+#'   [fossil_presences()] accepts. Rows for other species are ignored.
+#' @param n_fossil Number of fossil presences to draw; defaults to
+#'   `n_presence`.
 #' @param land Optional `sf`/`sfc` land outline used to mask predictions and
 #'   restrict the background to land. Defaults to Natural Earth at medium
 #'   resolution.
 #' @param quiet Suppress progress messages.
 #' @return A `richcast_sdm`. `metrics` holds AUC and Boyce for `maxent`, `rf`
 #'   and `ensemble`; `range_cells` is the number of grid cells with climate the
-#'   range covers.
+#'   range covers. A model fitted with fossils also records `n_fossil`,
+#'   `n_fossil_background`, `fossil_units` and `fossil_draws` (the unit, age
+#'   and slice of every fossil presence).
 #' @references Hirzel, A. H., Le Lay, G., Helfer, V., Randin, C., & Guisan, A.
 #'   (2006). Evaluating the ability of habitat suitability models to predict
 #'   species presences. *Ecological Modelling*, 199, 142-152.
@@ -118,6 +147,8 @@ fit_sdm <- function(db,
                     num_trees = 500,
                     seed = 123,
                     land = NULL,
+                    fossils = NULL,
+                    n_fossil = NULL,
                     quiet = FALSE) {
 
   rlang::check_installed(c("maxnet", "ranger"),
@@ -133,8 +164,18 @@ fit_sdm <- function(db,
   sp_name <- row$species
   sp_geom <- sf::st_geometry(row)
 
+  if (!is.null(fossils)) {
+    fossils <- fossil_presences(fossils)
+    fossils <- fossils[fossils$species == sp_name, , drop = FALSE]
+    if (nrow(fossils) == 0) fossils <- NULL
+  }
+
   # --- Study extent and present-day climate -------------------------------
-  study_ext <- study_extent(sp_geom, buffer)
+  extent_geom <- if (is.null(fossils)) sp_geom else
+    c(sf::st_as_sfc(sf::st_bbox(sp_geom)),
+      sf::st_sfc(sf::st_multipoint(cbind(fossils$lon, fossils$lat)),
+                 crs = sf::st_crs(sp_geom)))
+  study_ext <- study_extent(extent_geom, buffer)
   say("[{sp_name}] Loading present-day climate")
   present <- climate_at(climate, "present", predictors, study_ext)
   present <- present[[predictors]]
@@ -176,10 +217,25 @@ fit_sdm <- function(db,
 
   response <- c(rep(1L, nrow(pres_df)), rep(0L, nrow(bg_df)))
   covars <- rbind(pres_df[predictors], bg_df[predictors])
+  modern <- rep(TRUE, length(response))
+
+  # --- Fossil presences and time-matched background -----------------------
+  if (!is.null(fossils)) {
+    n_fossil <- n_fossil %||% n_presence
+    fd <- draw_fossils(fossils, climate, predictors, study_ext, land_vec,
+                       n = n_fossil,
+                       n_background = round(n_background * n_fossil / n_presence),
+                       climate_times = climate$times)
+    say("[{sp_name}] {nrow(fd$presence)} fossil presences from {length(unique(fossils$unit_id))} units, {nrow(fd$background)} time-matched background")
+    response <- c(response, rep(1L, nrow(fd$presence)), rep(0L, nrow(fd$background)))
+    covars <- rbind(covars, fd$presence, fd$background)
+    modern <- c(modern, rep(FALSE, nrow(fd$presence) + nrow(fd$background)))
+  }
 
   # --- Hold-out evaluation ------------------------------------------------
   metrics <- if (test_frac > 0) {
-    evaluate_holdout(response, covars, test_frac, num_trees, seed)
+    evaluate_holdout(response, covars, test_frac, num_trees, seed,
+                     eligible = modern)
   } else {
     tibble::tibble(model = c("maxent", "rf", "ensemble"),
                    auc = NA_real_, boyce = NA_real_)
@@ -188,7 +244,8 @@ fit_sdm <- function(db,
   # --- Final fit on every point -------------------------------------------
   members <- fit_members(response, covars, num_trees, seed)
   fitted <- predict_members(members, covars)
-  cutoff <- resolve_threshold(threshold, response, fitted[, "ensemble"])
+  cutoff <- resolve_threshold(threshold, response[modern],
+                              fitted[modern, "ensemble"])
 
   ens <- metrics[metrics$model == "ensemble", ]
   say("[{sp_name}] ensemble AUC {round(ens$auc, 3)}, Boyce {round(ens$boyce, 3)}, threshold {round(cutoff, 3)}")
@@ -196,7 +253,7 @@ fit_sdm <- function(db,
   # --- Present-day prediction ---------------------------------------------
   suit <- predict_surface(present, members, land_geom)
 
-  structure(
+  out <- structure(
     list(
       species        = sp_name,
       members        = members,
@@ -215,6 +272,13 @@ fit_sdm <- function(db,
     ),
     class = "richcast_sdm"
   )
+  if (!is.null(fossils)) {
+    out$n_fossil            <- nrow(fd$presence)
+    out$n_fossil_background <- nrow(fd$background)
+    out$fossil_units        <- length(unique(fossils$unit_id))
+    out$fossil_draws        <- tibble::as_tibble(fd$draws)
+  }
+  out
 }
 
 #' Project a fitted model onto a palaeoclimate slice
@@ -291,6 +355,9 @@ print.richcast_sdm <- function(x, ...) {
   cli::cli_text("{.cls richcast_sdm} {.strong {x$species}}")
   cli::cli_text("  {length(x$predictors)} predictors: {.val {x$predictors}}")
   cli::cli_text("  {x$n_presence} pseudo-presences ({x$range_cells} range cell{?s}), {x$n_background} background")
+  if (!is.null(x$n_fossil)) {
+    cli::cli_text("  {x$n_fossil} fossil presences from {x$fossil_units} unit{?s}, {x$n_fossil_background} time-matched background")
+  }
   for (i in seq_len(nrow(m))) {
     cli::cli_text("  {m$model[i]}: AUC {round(m$auc[i], 3)} | Boyce {round(m$boyce[i], 3)}")
   }
@@ -366,10 +433,13 @@ predict_surface <- function(r, members, land_geom) {
 
 #' Score members on a stratified hold-out
 #' @noRd
-evaluate_holdout <- function(response, covars, test_frac, num_trees, seed) {
+evaluate_holdout <- function(response, covars, test_frac, num_trees, seed,
+                             eligible = rep(TRUE, length(response))) {
   set.seed(seed)
   pick <- function(idx) idx[sample.int(length(idx), max(1, round(length(idx) * test_frac)))]
-  test <- c(pick(which(response == 1)), pick(which(response == 0)))
+  # Only `eligible` points (the range's, when fossils are added) are held out.
+  test <- c(pick(which(response == 1 & eligible)),
+            pick(which(response == 0 & eligible)))
 
   members <- fit_members(response[-test], covars[-test, , drop = FALSE],
                          num_trees, seed)

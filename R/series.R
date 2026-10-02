@@ -35,6 +35,10 @@
 #'   own threshold. Modelling the union of the ranges instead lets the larger
 #'   range swamp the smaller one. `NULL` (the default) uses the merges the
 #'   region's zooarchaeological list defines.
+#' @param fossils Optional dated fossil occurrences, in any form
+#'   [fossil_presences()] accepts, added to the training data of the species
+#'   they name (see "Fossil presences" in [fit_sdm()]). Name the fitted
+#'   species, not a merged taxon.
 #' @param keep_surfaces Retain the richness surfaces, so maps can be drawn
 #'   afterwards. Stored wrapped, so the result survives `saveRDS()`.
 #' @param on_error `"warn"` skips a failing species and carries on; `"stop"`
@@ -62,6 +66,7 @@ run_hindcast_series <- function(db,
                                 region,
                                 species = NULL,
                                 merge = NULL,
+                                fossils = NULL,
                                 keep_surfaces = TRUE,
                                 on_error = c("warn", "stop"),
                                 quiet = FALSE,
@@ -107,6 +112,17 @@ run_hindcast_series <- function(db,
     ))
   }
 
+  if (!is.null(fossils)) {
+    fossils <- fossil_presences(fossils)
+    unused <- setdiff(unique(fossils$species), unlist(taxa))
+    if (length(unused) > 0) {
+      cli::cli_warn(c(
+        "Fossils for species not being fitted are ignored: {.val {unused}}.",
+        "i" = "Name the member species of a merged taxon, not the taxon."
+      ))
+    }
+  }
+
   fits <- list()
   fitted_taxa <- list()
   stacks <- NULL
@@ -125,7 +141,7 @@ run_hindcast_series <- function(db,
     member_proj <- list()
     for (sp in taxa[[tx]]) {
       fitted <- try_step(
-        fit_sdm(db, sp, climate, quiet = quiet, ...),
+        fit_sdm(db, sp, climate, fossils = fossils, quiet = quiet, ...),
         what = "fit", species = sp, on_error = on_error
       )
       if (is.null(fitted)) next
@@ -246,6 +262,7 @@ models_table <- function(fits) {
       threshold     = f$threshold,
       present_cells = f$present_cells
     )
+    if (!is.null(f$n_fossil)) out$n_fossil <- f$n_fossil
     for (i in seq_len(nrow(m))) {
       out[[paste0("auc_", m$model[i])]] <- m$auc[i]
       out[[paste0("boyce_", m$model[i])]] <- m$boyce[i]

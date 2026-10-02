@@ -1,3 +1,25 @@
+# richcast (development version)
+
+* **Fossil presences**: `fit_sdm()` and `run_hindcast_series()` take an
+  optional `fossils` table of dated occurrences, read by the new
+  `fossil_presences()` (a `slices` column of `"ka:prob;..."`, or long form
+  with `ka_bp` and `weight`). Each species gets `n_fossil` draws (as many as
+  its pseudo-presences by default), spread evenly over the dated units, each
+  taking the climate of a slice drawn by the unit's probabilities. Matching
+  background is drawn from the same slices. The study extent grows to take
+  in the sites. The `p10` threshold and the hold-out metrics use the range's
+  points only. Without `fossils`, fitting is unchanged.
+* Fossil data are not bundled. The deer records used to develop the feature
+  come from the ROCEEH Out of Africa Database (ROAD; Kandel et al. 2023,
+  CC BY-SA 4.0) via the roadDB package; both are now in
+  `citation("richcast")` and `?fossil_presences`.
+* `vignette("middle-east")` has a new section comparing ungulate richness in
+  the Levantine corridor with dated archaeological site density, using a
+  circular-shift test. The aggregated site series ships as
+  `inst/extdata/levant_site_series.csv` (CC BY-SA 4.0; built from ROAD, NERD
+  and p3k14c, see `inst/extdata/README.md`). Its sources are in
+  `citation("richcast")` and the vignette's new reference list.
+
 # richcast 0.1.0
 
 ## Revised and simplified model
