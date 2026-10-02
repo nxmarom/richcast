@@ -17,7 +17,8 @@ A complete analysis with the full pipeline: every bovid, cervid, equid and
 wild boar on the Middle East's Pleistocene zooarchaeological list, modelled
 against Beyer et al. (2020) palaeoclimate and hindcast across all 71 of its
 slices back to 120 ka BP. Richness is read over the whole region and over a
-focus area on the Mediterranean part of Israel.
+focus area on the Mediterranean part of Israel, and compared with dated
+archaeological site density in the Levantine corridor.
 
 **This vignette is precomputed.** It needs IUCN Red List range polygons,
 which cannot be redistributed, and about 160 MB of prepared climate slices.
@@ -519,6 +520,227 @@ panel_plot(
 )
 ```
 
+## Archaeological site density in the Levantine corridor
+
+Does modelled ungulate richness track how intensively people used the
+landscape? This section compares richness over the whole Levantine corridor,
+34.0-37.5 E by 29.5-37.0 N (the Negev and the head of the Gulf of Aqaba north
+to Hatay), with a time series of dated archaeological site-phases from the
+same box.
+
+### The site series
+
+The series ships with richcast as `levant_site_series.csv` in `extdata`. It is
+an aggregate, one row per richcast slice; no individual dates are included.
+It was built outside the package, by a separate Python pipeline:
+
+* **Dates.** Radiocarbon dates from NERD (Palmisano et al. 2022) and p3k14c
+  (Bird et al. 2022), restricted to the Middle East, with flagged dates and
+  duplicates dropped. Absolute dates from ROAD (Kandel et al. 2023, via
+  roadDB): radiocarbon, OSL, TL, ESR, U-series and others. Radiocarbon dates
+  already in ROAD were dropped from the other two sources. Only sites inside
+  the corridor box were kept.
+* **Calibration.** Radiocarbon dates were calibrated with IntCal20 (Reimer
+  et al. 2020); other methods were taken as normal distributions with their
+  reported 1-sigma error.
+* **Site-phases.** Dates were grouped into site-phases: one per dated layer
+  for ROAD, and bins of 200 years (`rcarbon::binPrep`, `h = 200`) for the
+  radiocarbon databases. Each phase's mean age distribution was integrated
+  over each slice's window (half-way to the neighbouring slices) and summed
+  over phases. That gives the expected number of phases per slice
+  (`levant_phases`), and per ka once divided by the window width
+  (`levant_per_ka`).
+* **Uncertainty.** `levant_per_ka_q05` and `levant_per_ka_q95` are the 90%
+  envelope of 500 Monte Carlo draws of one age per phase.
+* **Taphonomy.** `levant_per_ka_taph` is corrected for the loss of older
+  deposits with the Surovell et al. (2009) model,
+  n(t) = 5.726442e6 (t + 2176.4)^-1.3925, relative to the present.
+
+Before 48 ka, beyond radiocarbon, only ROAD's other dating methods
+contribute, so the series there is sparse and coarse.
+
+**Licence and attribution.** `levant_site_series.csv` is derived from ROAD
+(CC BY-SA 4.0), NERD (CC BY 4.0) and p3k14c (data CC0, attribution
+requested), and is distributed under **CC BY-SA 4.0**. If you use it, cite
+Kandel et al. (2023), Palmisano et al. (2022), Bird et al. (2022), Reimer
+et al. (2020) and Surovell et al. (2009).
+
+```{r site-series}
+sites <- read.csv(system.file("extdata", "levant_site_series.csv",
+                              package = "richcast"))
+head(sites)
+```
+
+### Richness in the corridor
+
+Richness is the mean number of taxa above their p10 threshold per land cell
+in the box, read from the region's cell table. This is not the any-cell count
+used for the focus area: over about 77 cells nearly every taxon turns up
+somewhere, so that count saturates.
+
+The comparison is also drawn for the fossil-calibrated run, where red deer
+and roe deer also train on dated ROAD occurrences (see "Fossil presences" in
+`?fit_sdm`), when that run has been saved next to this one. The fossil table
+itself is not distributed.
+
+```{r corridor-richness}
+corridor <- c(34.0, 37.5, 29.5, 37.0)
+corridor_richness <- function(cells) {
+  bind_rows(lapply(names(cells), function(k) {
+    cells[[k]]$region |>
+      filter(x > corridor[1], x < corridor[2], y > corridor[3], y < corridor[4]) |>
+      group_by(x, y) |>
+      summarise(strict = sum(strict), .groups = "drop") |>
+      summarise(cells = n(), richness = mean(strict)) |>
+      mutate(ka_bp = to_ka(k))
+  }))
+}
+corr <- corridor_richness(cell_tbl) |> mutate(run = "original")
+
+# The fossil-calibrated run, if it has been saved alongside this one: same
+# species and merges, plus the deer fossil table and 100 draws.
+fossil_csv <- "deer_fossil_presences.csv"
+if (file.exists(fossil_csv)) {
+  fos <- fossil_presences(fossil_csv)
+  key <- c(list(sort(included), merges), list(as.data.frame(fos), 100))
+  f_cells <- file.path("runs", paste0("res_", rlang::hash(key), "_cells.rds"))
+  if (file.exists(f_cells)) {
+    corr <- bind_rows(corr, corridor_richness(readRDS(f_cells)) |>
+                        mutate(run = "fossil-calibrated deer"))
+  }
+}
+corr <- corr |> mutate(run = factor(run, c("original", "fossil-calibrated deer")))
+corr |>
+  group_by(run) |>
+  summarise(cells = paste(range(cells), collapse = "-"),
+            mean = mean(richness), min = min(richness), max = max(richness))
+```
+
+### Do they co-vary?
+
+For each window, the Spearman correlation between the taphonomy-corrected
+site-phases per ka and richness per cell. Both series are strongly
+autocorrelated, so the significance test is a **circular shift**: richness is
+rolled against the site series by every lag from 1 to n - 1, wrapping around
+at the ends, and p is the share of lags whose |rho| is at least the observed
+one. This keeps each series' own autocorrelation and asks only whether the
+two line up better than at a random offset. When no lag does as well, p is
+reported as below 1/(n - 1). The Spearman correlation of first differences
+(slice-to-slice changes) asks whether the two also move together step by
+step, or only share a slow trend.
+
+```{r site-shift-test}
+shift_test <- function(x, y) {
+  n <- length(x)
+  obs <- cor(x, y, method = "spearman")
+  lagged <- vapply(seq_len(n - 1), function(k) {
+    cor(x, y[c((k + 1):n, seq_len(k))], method = "spearman")
+  }, numeric(1))
+  tibble(n = n, rho = obs, p_shift = mean(abs(lagged) >= abs(obs)),
+         p_floor = 1 / (n - 1),
+         diff_rho = cor(diff(x), diff(y), method = "spearman"))
+}
+windows <- list("0-12" = c(0, 12), "12-48" = c(12, 48), "48-120" = c(48, 120),
+                "12-120" = c(12, 120), "0-120" = c(0, 120))
+joined <- inner_join(corr, sites, by = "ka_bp")
+tests <- bind_rows(lapply(names(windows), function(w) {
+  bind_rows(lapply(split(joined, joined$run, drop = TRUE), function(d) {
+    d <- filter(d, ka_bp >= windows[[w]][1], ka_bp <= windows[[w]][2]) |> arrange(ka_bp)
+    shift_test(d$levant_per_ka_taph, d$richness) |>
+      mutate(run = as.character(d$run[1]), window_ka = w, .before = 1)
+  }))
+}))
+tests |>
+  mutate(p_shift = ifelse(p_shift == 0, sprintf("< %.3f", p_floor),
+                          sprintf("%.2f", p_shift)),
+         across(c(rho, diff_rho), \(x) sprintf("%.2f", x))) |>
+  select(-p_floor)
+```
+
+```{r site-plot, fig.width = 11, fig.height = 7, dpi = 110}
+# Cold-to-warm colours: blue for the glacial maximum, red for warmer times.
+periods <- tibble(
+  period = c("Holocene (2-11 ka)", "Late Glacial (12-16 ka)", "LGM (17-26 ka)",
+             "MIS 3 (28-38 ka)", "MIS 3 (40-48 ka)"),
+  colour = c("#b2182b", "#92c5de", "#2166ac", "#f4a582", "#d6604d")
+)
+period_cols <- setNames(periods$colour, periods$period)
+shade <- tibble(xmin = c(12, 48), xmax = c(48, 120),
+                label = c("tested window", "beyond radiocarbon:\nROAD non-14C dates only"),
+                fill = c("#0072B2", "grey50"))
+run_cols <- c("original" = "grey20", "fossil-calibrated deer" = "#1f6f8b")
+
+p_rich <- ggplot(corr, aes(ka_bp, richness, colour = run)) +
+  geom_rect(data = shade, aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf),
+            inherit.aes = FALSE, fill = shade$fill, alpha = 0.08) +
+  geom_step(direction = "mid", linewidth = 0.6) +
+  scale_x_reverse(breaks = seq(0, 120, 20), expand = c(0.01, 0)) +
+  scale_colour_manual(values = run_cols, name = NULL) +
+  labs(x = NULL, y = "Taxa per cell (p10)",
+       title = "Levantine corridor, 34-37.5 E, 29.5-37 N") +
+  theme_minimal(base_size = 10) +
+  theme(legend.position = "top", axis.text.x = element_blank())
+
+p_sites <- ggplot(sites, aes(ka_bp)) +
+  geom_rect(data = shade, aes(xmin = xmin, xmax = xmax, ymin = 0, ymax = Inf),
+            inherit.aes = FALSE, fill = shade$fill, alpha = 0.08) +
+  geom_text(data = shade, aes(x = (xmin + xmax) / 2, y = 2000, label = label),
+            inherit.aes = FALSE, size = 2.8, colour = "grey30", lineheight = 0.9) +
+  geom_ribbon(aes(ymin = pmax(levant_per_ka_q05, 0.05), ymax = pmax(levant_per_ka_q95, 0.05)),
+              fill = "grey60", alpha = 0.4) +
+  geom_step(aes(y = levant_per_ka), direction = "mid", linewidth = 0.6) +
+  geom_step(aes(y = levant_per_ka_taph), direction = "mid", linetype = "dashed",
+            linewidth = 0.5) +
+  scale_x_reverse(breaks = seq(0, 120, 20), expand = c(0.01, 0)) +
+  scale_y_log10(labels = \(x) format(x, scientific = FALSE, drop0trailing = TRUE)) +
+  labs(x = "ka BP", y = "Site-phases per ka (log)",
+       caption = "Solid: site-phases per ka, grey band: 90% Monte Carlo envelope.\nDashed: corrected for taphonomic loss (Surovell et al. 2009).") +
+  theme_minimal(base_size = 10) +
+  theme(plot.caption = element_text(hjust = 0))
+
+# 2-48 ka. The 0 and 1 ka slices are left out: the radiocarbon databases
+# under-count recent sites, and the 0 ka point would squash the axis.
+sc <- joined |>
+  filter(run == "original", ka_bp >= 2, ka_bp <= 48) |>
+  arrange(ka_bp) |>
+  mutate(period = factor(cut(ka_bp, c(1.5, 11.5, 16.5, 27, 39, 48.5),
+                             labels = periods$period), periods$period))
+t12 <- filter(tests, run == "original", window_ka == "12-48")
+marks <- sc |> filter(ka_bp %in% c(2, 12, 48))
+p_scatter <- ggplot(sc, aes(levant_per_ka_taph, richness)) +
+  geom_path(colour = "grey70", linewidth = 0.4) +
+  geom_point(aes(fill = period), shape = 21, size = 3.6, colour = "white", stroke = 0.8) +
+  geom_text(data = marks, aes(label = paste(ka_bp, "ka")), vjust = -1.1, size = 3.2) +
+  scale_x_log10(breaks = c(100, 200, 400, 700)) +
+  expand_limits(x = 100) +
+  scale_fill_manual(values = period_cols, name = NULL, drop = FALSE) +
+  labs(x = "Site-phases per ka, taphonomy-corrected (log)", y = "Taxa per cell (p10), original run",
+       title = sprintf("Tested, 12-48 ka: rho = %.2f, shift p %s,\nfirst-difference rho = %.2f",
+                       t12$rho, if (t12$p_shift == 0) sprintf("< %.3f", t12$p_floor) else
+                         sprintf("= %.2f", t12$p_shift), t12$diff_rho),
+       subtitle = "Holocene (2-11 ka) shown for context, not tested",
+       caption = "0-1 ka omitted: radiocarbon databases under-count recent sites.") +
+  guides(fill = guide_legend(nrow = 2, byrow = TRUE)) +
+  theme_minimal(base_size = 10) +
+  theme(legend.position = "bottom", plot.title = element_text(size = 10),
+        plot.subtitle = element_text(size = 9), plot.caption = element_text(hjust = 0))
+
+patchwork::wrap_plots(patchwork::wrap_plots(p_rich, p_sites, ncol = 1, heights = c(1, 1.3)),
+                      p_scatter, widths = c(1.25, 1))
+```
+
+### Reading it
+
+From 48 to 12 ka, site density and corridor richness rise and fall
+together: both are low from about 30 to 17 ka and both climb through the
+Late Glacial. The co-variation lies in that slow trend. The first
+differences are uncorrelated, so the two do not move together from one
+slice to the next. A common driver such as glacial aridity, thinning both
+game and people, is plausible but is not tested here. Beyond 48 ka there is
+no relation: with radiocarbon out of reach, the site series rests on a
+handful of coarsely dated layers. In the Holocene there is none either, as
+farming-era settlement growth swamps any signal from the game.
+
 ## Caveats
 
 * The models assume niche conservatism, and the deep slices ask them to
@@ -530,6 +752,39 @@ panel_plot(
   it need not have been recorded in the focus area itself.
 * The focus area is about 95 by 110 km. Presence means suitable in at least
   one of its cells, so it reads as "within the area", not "throughout it".
+
+## References
+
+* Beyer, R. M., Krapp, M., & Manica, A. (2020). High-resolution terrestrial
+  climate, bioclimate and vegetation for the last 120,000 years. *Scientific
+  Data*, 7, 236.
+* Bird, D., Miranda, L., Vander Linden, M., Robinson, E., Bocinsky, R. K.,
+  Nicholson, C., et al. (2022). p3k14c, a synthetic global database of
+  archaeological radiocarbon dates. *Scientific Data*, 9, 27.
+  https://doi.org/10.1038/s41597-022-01118-7
+* Kandel, A. W., Sommer, C., Kanaeva, Z., Bolus, M., Bruch, A. A., Groth, C.,
+  Haidle, M. N., Hertler, C., Heß, J., Malina, M., Märker, M., Hochschild, V.,
+  Mosbrugger, V., Schrenk, F., & Conard, N. J. (2023). The ROCEEH Out of Africa
+  Database (ROAD): A large-scale research database serves as an indispensable
+  tool for human evolutionary studies. *PLOS ONE*, 18(8), e0289513.
+  https://doi.org/10.1371/journal.pone.0289513
+* Kanaeva, Z., Borre Pedersen, J., Sommer, C., & Streicher, T. P. (2026).
+  *roadDB: Access Data from the ROCEEH Out of Africa Database (ROAD)*. R
+  package version 0.2.0. https://doi.org/10.32614/CRAN.package.roadDB
+* Palmisano, A., Bevan, A., Lawrence, D., & Shennan, S. (2022). The NERD
+  dataset: Near East radiocarbon dates between 15,000 and 1,500 cal. yr. BP.
+  *Journal of Open Archaeology Data*, 10, 2. https://doi.org/10.5334/joad.90
+* Palmisano, A., Bevan, A., Lawrence, D., & Shennan, S. (2022). NERD: Near
+  East Radiocarbon Dates, version 6.0 (23 September 2022).
+  https://github.com/apalmisano82/NERD
+* Reimer, P. J., Austin, W. E. N., Bard, E., Bayliss, A., Blackwell, P. G.,
+  Bronk Ramsey, C., et al. (2020). The IntCal20 Northern Hemisphere
+  radiocarbon age calibration curve (0-55 cal kBP). *Radiocarbon*, 62(4),
+  725-757. https://doi.org/10.1017/RDC.2020.41
+* Surovell, T. A., Byrd Finley, J., Smith, G. M., Brantingham, P. J., &
+  Kelly, R. L. (2009). Correcting temporal frequency distributions for
+  taphonomic bias. *Journal of Archaeological Science*, 36(8), 1715-1724.
+  https://doi.org/10.1016/j.jas.2009.03.029
 
 ```{r session}
 sessionInfo()

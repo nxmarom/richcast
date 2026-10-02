@@ -13,6 +13,12 @@
   come from the ROCEEH Out of Africa Database (ROAD; Kandel et al. 2023,
   CC BY-SA 4.0) via the roadDB package; both are now in
   `citation("richcast")` and `?fossil_presences`.
+* `vignette("middle-east")` has a new section comparing ungulate richness in
+  the Levantine corridor with dated archaeological site density, using a
+  circular-shift test. The aggregated site series ships as
+  `inst/extdata/levant_site_series.csv` (CC BY-SA 4.0; built from ROAD, NERD
+  and p3k14c, see `inst/extdata/README.md`). Its sources are in
+  `citation("richcast")` and the vignette's new reference list.
 
 # richcast 0.1.0
 

@@ -29,6 +29,7 @@ Imports:
 Suggests:
     ggplot2,
     pastclim,
+    patchwork,
     rnaturalearth,
     rnaturalearthhires,
     testthat (>= 3.0.0),
