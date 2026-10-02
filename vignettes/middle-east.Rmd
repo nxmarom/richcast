@@ -826,15 +826,11 @@ tests |>
 #> 10 fossil-calibrated deer 0-120        72 0.18  0.44    0.07
 ```
 
+The full 120 ka series first: corridor richness for both runs, and the site
+curve with its uncertainty.
+
 
 ``` r
-# Cold-to-warm colours: blue for the glacial maximum, red for warmer times.
-periods <- tibble(
-  period = c("Holocene (2-11 ka)", "Late Glacial (12-16 ka)", "LGM (17-26 ka)",
-             "MIS 3 (28-38 ka)", "MIS 3 (40-48 ka)"),
-  colour = c("#b2182b", "#92c5de", "#2166ac", "#f4a582", "#d6604d")
-)
-period_cols <- setNames(periods$colour, periods$period)
 shade <- tibble(xmin = c(12, 48), xmax = c(48, 120),
                 label = c("tested window", "beyond radiocarbon:\nROAD non-14C dates only"),
                 fill = c("#0072B2", "grey50"))
@@ -868,57 +864,111 @@ p_sites <- ggplot(sites, aes(ka_bp)) +
   theme_minimal(base_size = 10) +
   theme(plot.caption = element_text(hjust = 0))
 
-# 2-48 ka. The 0 and 1 ka slices are left out: the radiocarbon databases
-# under-count recent sites, and the 0 ka point would squash the axis.
-sc <- joined |>
-  filter(run == "original", ka_bp >= 2, ka_bp <= 48) |>
-  arrange(ka_bp) |>
-  mutate(period = factor(cut(ka_bp, c(1.5, 11.5, 16.5, 27, 39, 48.5),
-                             labels = periods$period), periods$period))
-t12 <- filter(tests, run == "original", window_ka == "12-48")
-marks <- sc |> filter(ka_bp %in% c(2, 12, 48))
-p_scatter <- ggplot(sc, aes(levant_per_ka_taph, richness)) +
-  geom_path(colour = "grey70", linewidth = 0.4) +
-  geom_point(aes(fill = period), shape = 21, size = 3.6, colour = "white", stroke = 0.8) +
-  geom_text(data = marks, aes(label = paste(ka_bp, "ka")), vjust = -1.1, size = 3.2) +
-  scale_x_log10(breaks = c(100, 200, 400, 700)) +
-  expand_limits(x = 100) +
-  scale_fill_manual(values = period_cols, name = NULL, drop = FALSE) +
-  labs(x = "Site-phases per ka, taphonomy-corrected (log)", y = "Taxa per cell (p10), original run",
-       title = sprintf("Tested, 12-48 ka: rho = %.2f, shift p %s,\nfirst-difference rho = %.2f",
-                       t12$rho, if (t12$p_shift == 0) sprintf("< %.3f", t12$p_floor) else
-                         sprintf("= %.2f", t12$p_shift), t12$diff_rho),
-       subtitle = "Holocene (2-11 ka) shown for context, not tested",
-       caption = "0-1 ka omitted: radiocarbon databases under-count recent sites.") +
-  guides(fill = guide_legend(nrow = 2, byrow = TRUE)) +
-  theme_minimal(base_size = 10) +
-  theme(legend.position = "bottom", plot.title = element_text(size = 10),
-        plot.subtitle = element_text(size = 9), plot.caption = element_text(hjust = 0))
-
-patchwork::wrap_plots(patchwork::wrap_plots(p_rich, p_sites, ncol = 1, heights = c(1, 1.3)),
-                      p_scatter, widths = c(1.25, 1))
+patchwork::wrap_plots(p_rich, p_sites, ncol = 1, heights = c(1, 1.3))
 ```
 
 ![plot of chunk site-plot](middle-east-site-plot-1.png)
 
+Then the comparison itself, for the run with fossil-calibrated deer (the
+original run when that one is not available). Left: the two series from 48
+to 2 ka on one axis, each as a z-score over those slices; 0 and 1 ka are left
+out, as the radiocarbon databases under-count recent sites. Right: the
+circular-shift test drawn out, the 12-48 ka correlation at the real alignment
+(orange) and with richness rolled by each of the other 23 slices (grey).
+
+
+``` r
+main_run <- if ("fossil-calibrated deer" %in% joined$run) "fossil-calibrated deer" else "original"
+
+series_names <- c(sites = "Site-phases per ka (log10, taphonomy-corrected)",
+                  rich  = paste0("Richness per cell (", main_run, ")"))
+ov <- joined |>
+  filter(run == main_run, ka_bp >= 2, ka_bp <= 48) |>
+  arrange(ka_bp) |>
+  transmute(ka_bp,
+            sites = as.numeric(scale(log10(levant_per_ka_taph))),
+            rich  = as.numeric(scale(richness))) |>
+  pivot_longer(c(sites, rich), names_to = "series", values_to = "z") |>
+  mutate(series = factor(series_names[series], series_names))
+ov_cols <- setNames(c("#1d4ed8", "#c2410c"), series_names)
+bands <- tibble(xmin = c(1.5, 11.5, 16.5), xmax = c(11.5, 16.5, 26.5),
+                label = c("Holocene\n(not tested)", "Late\nGlacial", "LGM"),
+                fill = c("grey60", "#92c5de", "#2166ac"))
+z_lim <- range(ov$z) + c(-0.2, 0.9)
+
+p_ov <- ggplot(ov, aes(ka_bp, z, colour = series)) +
+  geom_rect(data = bands, aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf),
+            inherit.aes = FALSE, fill = bands$fill, alpha = 0.15) +
+  geom_text(data = bands, aes(x = (xmin + xmax) / 2, y = z_lim[2], label = label),
+            inherit.aes = FALSE, vjust = 1, size = 2.8, colour = "grey25", lineheight = 0.9) +
+  geom_hline(yintercept = 0, colour = "grey80") +
+  geom_line(linewidth = 0.7) +
+  geom_point(size = 1.8) +
+  scale_x_reverse(breaks = seq(0, 48, 6)) +
+  scale_y_continuous(limits = z_lim) +
+  scale_colour_manual(values = ov_cols, name = NULL) +
+  labs(x = "ka BP", y = "z-score (2-48 ka)") +
+  guides(colour = guide_legend(ncol = 1)) +
+  theme_minimal(base_size = 10) +
+  theme(legend.position = "top")
+
+w <- joined |> filter(run == main_run, ka_bp >= 12, ka_bp <= 48) |> arrange(ka_bp)
+n <- nrow(w)
+shift_rho <- tibble(k = 0:(n - 1)) |>
+  mutate(rho = vapply(k, function(kk) {
+    y <- if (kk == 0) w$richness else w$richness[c((kk + 1):n, seq_len(kk))]
+    cor(w$levant_per_ka_taph, y, method = "spearman")
+  }, numeric(1)),
+  real = k == 0)
+best <- max(shift_rho$rho[!shift_rho$real])
+
+p_bar <- ggplot(shift_rho, aes(k, rho, fill = real)) +
+  geom_col(width = 0.8) +
+  geom_hline(yintercept = 0, colour = "grey50") +
+  scale_fill_manual(values = c(`TRUE` = "#c2410c", `FALSE` = "grey65"), guide = "none") +
+  scale_x_continuous(breaks = c(0, 5, 10, 15, 20, n - 1)) +
+  labs(x = "Shift of richness against the site series (slices, wrapped)",
+       y = "Spearman rho, 12-48 ka",
+       title = sprintf("Real rho = %.2f; highest of %d shifts = %.2f",
+                       shift_rho$rho[1], n - 1, best)) +
+  theme_minimal(base_size = 10) +
+  theme(plot.title = element_text(size = 10))
+
+patchwork::wrap_plots(p_ov, p_bar, widths = c(1.4, 1))
+```
+
+![plot of chunk site-overlay](middle-east-site-overlay-1.png)
+
 ### Reading it
 
-From 48 to 12 ka, site density and corridor richness rise and fall
-together: both are low from about 30 to 17 ka and both climb through the
-Late Glacial. The co-variation lies in that slow trend. The first
-differences are uncorrelated, so the two do not move together from one
-slice to the next. A common driver such as glacial aridity, thinning both
-game and people, is plausible but is not tested here. Beyond 48 ka there is
-no relation: with radiocarbon out of reach, the site series rests on a
-handful of coarsely dated layers. In the Holocene there is none either, as
-farming-era settlement growth swamps any signal from the game.
+The comparison figure uses the run with fossil-calibrated deer, because it
+matches the zooarchaeological record better. Red deer and roe deer are
+reported from most dated Levantine units in ROAD, but the original models,
+trained on present-day ranges, place them at almost none of them. Across the
+dated ROAD units with deer, the share of each unit's slices that a model
+predicts present rises from 0.02-0.03 in the original run to 0.94-0.97 in the
+fossil-calibrated one.
+
+From 48 to 12 ka, site density and corridor richness share a dip at the
+Last Glacial Maximum and a rise through the Late Glacial: both are low from
+about 30 to 17 ka and both climb after it. The real alignment beats every
+shifted one, but shifts of one or two slices come close (in the fossil run,
+0.57 against 0.63), and the first differences are uncorrelated. So this is a
+shared slow trend, not slice-by-slice coupling. A common driver such as
+glacial aridity, thinning both game and people, is plausible but is not
+tested here. Beyond 48 ka there is no relation: with radiocarbon out of
+reach, the site series rests on a handful of coarsely dated layers. In the
+Holocene, which is not tested, fossil-calibrated richness falls while the
+number of sites stays high, as farming-era settlement grows regardless of
+the game.
 
 The fossil-calibrated rows are not independent evidence. Its red deer and
 roe deer were trained on dated ROAD occurrences, part of the same
 archaeological record that the site curve counts. A correlation found only
 in that run, notably 12-120 ka (p below 0.017, against 0.19 in the original
 run), may partly reflect the shared data. The original run, trained on
-present-day ranges alone, is the fair test.
+present-day ranges alone, gives the same 12-48 ka result (rho 0.64, no shift
+as high) and is the fair test of it.
 
 ## Caveats
 
