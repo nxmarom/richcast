@@ -146,9 +146,17 @@ suitabilities, which needs no threshold. `richness_surface()` and
 * **Ranges** are IUCN Red List polygons you download yourself. The Red List
   Terms of Use (v3, section 4) prohibit redistributing them "in whole, or in
   part... including within Derivative Works", so the package ships none, and
-  the vignette prints none. Cite the Red List version you used.
-* **Climate** comes through `pastclim`, which handles the Beyer2020,
-  CHELSA-TraCE21k and WorldClim downloads.
+  the vignette prints none. Cite them with the Red List version and download
+  date, in the format the IUCN spatial-data metadata gives: "IUCN <year>. The
+  IUCN Red List of Threatened Species. <version>. https://www.iucnredlist.org.
+  Downloaded on <date>." (see `?iucn_folder`).
+* **Climate** comes through `pastclim` (Leonardi et al. 2023), which handles
+  the downloads. Cite the reconstruction too, as pastclim asks: Beyer2020
+  (Beyer et al. 2020, used in the Middle East vignette), CHELSA-TraCE21k
+  (Karger et al. 2023) or WorldClim 2.1 (Fick & Hijmans 2017).
+* **Land outlines**, which mask predictions and background points to land,
+  are Natural Earth via `rnaturalearth`. Natural Earth is public domain and
+  asks for no credit, but suggests "Made with Natural Earth" if you give one.
 * **Traits** for rodents ship as `rodent_traits` (Ecke et al. 2022, CC BY 4.0).
 * **Fossil occurrences**, for `fit_sdm(fossils = )`, are yours to supply;
   none ship. The dated deer records behind the fossil-calibrated Middle East
@@ -156,22 +164,39 @@ suitabilities, which needs no threshold. `richness_surface()` and
   2023), retrieved with the [roadDB](https://doi.org/10.32614/CRAN.package.roadDB)
   package. ROAD content is CC BY-SA 4.0: cite Kandel et al. (2023) and share
   derived tables under the same licence.
+* **Levantine site series**, the one table that ships
+  (`inst/extdata/levant_site_series.csv`, used in the Middle East vignette), is
+  an aggregate of dated site-phases built from ROAD, NERD (Palmisano et al.
+  2022) and p3k14c (Bird et al. 2022), calibrated with IntCal20 (Reimer et al.
+  2020) and corrected after Surovell et al. (2009). It is CC BY-SA 4.0, not
+  MIT; see `inst/extdata/README.md`.
 
 ## Vignettes
 
 * `vignette("richcast")`: the API on synthetic data you can run yourself.
 * `vignette("middle-east")`: the full pipeline on Middle Eastern ungulates,
-  Beyer2020, 120 ka to the present, with a focus area on Mediterranean Israel.
+  Beyer2020, 120 ka to the present, with a focus area on Mediterranean Israel
+  and a comparison with archaeological site density in the Levantine
+  corridor.
   It is precomputed, because its inputs cannot be redistributed;
   `vignettes/precompute.R` re-renders it.
 
 ## Citation
 
-Please cite the package and every data source you used: the IUCN Red List
-version, the palaeoclimate reconstruction, the sources behind any
-`zooarch_taxa()` list you relied on, Ecke et al. (2022) if you used
-`rodent_traits`, and Kandel et al. (2023) and roadDB if you trained on
-fossil occurrences from ROAD. `citation("richcast")` lists them.
+Please cite the package and every data source you used:
+
+* the IUCN Red List version and download date of your range polygons;
+* pastclim (Leonardi et al. 2023) and the palaeoclimate reconstruction:
+  Beyer et al. (2020), Karger et al. (2023) or Fick & Hijmans (2017);
+* the sources behind any `zooarch_taxa()` list you relied on;
+* Ecke et al. (2022) if you used `rodent_traits`;
+* Kandel et al. (2023) and roadDB if you trained on fossil occurrences from
+  ROAD;
+* Kandel et al. (2023), Palmisano et al. (2022), Bird et al. (2022), Reimer
+  et al. (2020) and Surovell et al. (2009) if you used the Levantine site
+  series.
+
+`citation("richcast")` lists them with full references.
 
 ## How this was built
 

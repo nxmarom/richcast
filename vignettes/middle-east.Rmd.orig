@@ -811,26 +811,35 @@ as high) and is the fair test of it.
 
 * Beyer, R. M., Krapp, M., & Manica, A. (2020). High-resolution terrestrial
   climate, bioclimate and vegetation for the last 120,000 years. *Scientific
-  Data*, 7, 236.
+  Data*, 7, 236. https://doi.org/10.1038/s41597-020-0552-1
 * Bird, D., Miranda, L., Vander Linden, M., Robinson, E., Bocinsky, R. K.,
   Nicholson, C., et al. (2022). p3k14c, a synthetic global database of
   archaeological radiocarbon dates. *Scientific Data*, 9, 27.
   https://doi.org/10.1038/s41597-022-01118-7
+* IUCN (year). The IUCN Red List of Threatened Species. Version used for the
+  range polygons. https://www.iucnredlist.org. Downloaded on the download
+  date. (The format given in the IUCN spatial-data metadata.)
+* Kanaeva, Z., Borre Pedersen, J., Sommer, C., & Streicher, T. P. (2026).
+  *roadDB: Access Data from the ROCEEH Out of Africa Database (ROAD)*. R
+  package version 0.2.0. https://doi.org/10.32614/CRAN.package.roadDB
 * Kandel, A. W., Sommer, C., Kanaeva, Z., Bolus, M., Bruch, A. A., Groth, C.,
   Haidle, M. N., Hertler, C., Heß, J., Malina, M., Märker, M., Hochschild, V.,
   Mosbrugger, V., Schrenk, F., & Conard, N. J. (2023). The ROCEEH Out of Africa
   Database (ROAD): A large-scale research database serves as an indispensable
   tool for human evolutionary studies. *PLOS ONE*, 18(8), e0289513.
   https://doi.org/10.1371/journal.pone.0289513
-* Kanaeva, Z., Borre Pedersen, J., Sommer, C., & Streicher, T. P. (2026).
-  *roadDB: Access Data from the ROCEEH Out of Africa Database (ROAD)*. R
-  package version 0.2.0. https://doi.org/10.32614/CRAN.package.roadDB
-* Palmisano, A., Bevan, A., Lawrence, D., & Shennan, S. (2022). The NERD
-  dataset: Near East radiocarbon dates between 15,000 and 1,500 cal. yr. BP.
-  *Journal of Open Archaeology Data*, 10, 2. https://doi.org/10.5334/joad.90
+* Leonardi, M., Hallet, E. Y., Beyer, R., Krapp, M., & Manica, A. (2023).
+  pastclim 1.2: an R package to easily access and use paleoclimatic
+  reconstructions. *Ecography*, 2023, e06481.
+  https://doi.org/10.1111/ecog.06481
+* Natural Earth (public domain) land outlines, via rnaturalearth: made with
+  Natural Earth, naturalearthdata.com.
 * Palmisano, A., Bevan, A., Lawrence, D., & Shennan, S. (2022). NERD: Near
   East Radiocarbon Dates, version 6.0 (23 September 2022).
   https://github.com/apalmisano82/NERD
+* Palmisano, A., Bevan, A., Lawrence, D., & Shennan, S. (2022). The NERD
+  dataset: Near East radiocarbon dates between 15,000 and 1,500 cal. yr. BP.
+  *Journal of Open Archaeology Data*, 10, 2. https://doi.org/10.5334/joad.90
 * Reimer, P. J., Austin, W. E. N., Bard, E., Bayliss, A., Blackwell, P. G.,
   Bronk Ramsey, C., et al. (2020). The IntCal20 Northern Hemisphere
   radiocarbon age calibration curve (0-55 cal kBP). *Radiocarbon*, 62(4),
