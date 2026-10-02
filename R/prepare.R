@@ -50,6 +50,26 @@
 #' @param check_grids Verify that every written slice shares one grid.
 #' @param quiet Suppress progress messages.
 #' @return A [climate_dir()] source pointing at `path`, invisibly.
+#' @references Leonardi, M., Hallet, E. Y., Beyer, R., Krapp, M., & Manica,
+#'   A. (2023). pastclim 1.2: an R package to easily access and use
+#'   paleoclimatic reconstructions. *Ecography*, 2023, e06481.
+#'   \doi{10.1111/ecog.06481}
+#'
+#'   Cite the reconstruction you use as well, as \pkg{pastclim} asks:
+#'
+#'   Beyer, R. M., Krapp, M., & Manica, A. (2020). High-resolution terrestrial
+#'   climate, bioclimate and vegetation for the last 120,000 years.
+#'   *Scientific Data*, 7, 236. \doi{10.1038/s41597-020-0552-1}
+#'
+#'   Karger, D. N., Nobis, M. P., Normand, S., Graham, C. H., & Zimmermann,
+#'   N. E. (2023). CHELSA-TraCE21k -- high-resolution (1 km) downscaled
+#'   transient temperature and precipitation data since the Last Glacial
+#'   Maximum. *Climate of the Past*, 19, 439-456.
+#'   \doi{10.5194/cp-19-439-2023}
+#'
+#'   Fick, S. E., & Hijmans, R. J. (2017). WorldClim 2: new 1-km spatial
+#'   resolution climate surfaces for global land areas. *International
+#'   Journal of Climatology*, 37(12), 4302-4315. \doi{10.1002/joc.5086}
 #' @seealso [climate_dir()]
 #' @examples
 #' \dontrun{

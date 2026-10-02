@@ -62,6 +62,18 @@ print.richcast_range_source <- function(x, ...) {
 #'   for all. See details.
 #' @param layer Optional layer name, for multi-layer sources.
 #' @return A `richcast_range_source`.
+#' @references IUCN range polygons must be cited with the Red List version
+#'   and download date. The format the IUCN spatial-data metadata gives for
+#'   the dataset as a whole, with YEAR the year of the Red List version,
+#'   VERSION the full version (e.g. 2025-1) and DATE your download date, is:
+#'
+#'   IUCN YEAR. The IUCN Red List of Threatened Species. VERSION.
+#'   https://www.iucnredlist.org. Downloaded on DATE.
+#'
+#'   For individual species maps it is the species' `citation` attribute,
+#'   then "YEAR. The IUCN Red List of Threatened Species. Version VERSION.
+#'   https://www.iucnredlist.org. Downloaded on DATE.", with YEAR the latest
+#'   year in the species' `year` attribute.
 #' @seealso [build_taxon_db()], [sf_polygons()]
 #' @examples
 #' src <- iucn_folder("UngulatePolygons")
