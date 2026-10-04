@@ -370,23 +370,23 @@ res$models |>
 ## Regional richness through time
 
 Per slice, over the region's land cells: `strict` is the mean number of taxa
-per cell above their p10 threshold, `lenient` the mean above their TSS
-threshold, and `expected` the mean sum of suitabilities (no threshold).
+per cell above their p10 threshold, and `lenient` the mean above their TSS
+threshold. Summing the suitabilities instead would not give a richness: they
+are not calibrated probabilities of presence, so the p10 and TSS counts are
+read as the bounds of a band.
 
 ```{r richness-table}
 rich <- bind_rows(lapply(slice_keys, function(k) {
   ct <- cell_tbl[[k]]
   per_cell <- ct$region |>
     group_by(x, y) |>
-    summarise(strict = sum(strict), lenient = sum(lenient),
-              expected = sum(suit), .groups = "drop")
+    summarise(strict = sum(strict), lenient = sum(lenient), .groups = "drop")
   tibble(time = k, ka_bp = to_ka(k), cells = ct$region_cells,
-         strict = mean(per_cell$strict), lenient = mean(per_cell$lenient),
-         expected = mean(per_cell$expected))
+         strict = mean(per_cell$strict), lenient = mean(per_cell$lenient))
 }))
 rich |>
-  select(ka_bp, cells, strict, expected, lenient) |>
-  mutate(across(c(strict, expected, lenient), \(x) round(x, 2)))
+  select(ka_bp, cells, strict, lenient) |>
+  mutate(across(c(strict, lenient), \(x) round(x, 2)))
 ```
 
 Top panel: mean richness as a band between the strict (p10) and lenient (TSS)
@@ -488,15 +488,13 @@ fa_species <- bind_rows(lapply(slice_keys, function(k) {
 fa_rich <- fa_species |>
   group_by(time, ka_bp) |>
   summarise(strict = sum(strict), lenient = sum(lenient),
-            expected = sum(suitability),
             strict_taxa = paste(gsub("_", " ", taxon[strict]), collapse = ", "),
             marginal_taxa = paste(gsub("_", " ", taxon[lenient & !strict]), collapse = ", "),
             .groups = "drop") |>
   arrange(ka_bp)
 
 fa_rich |>
-  mutate(expected = round(expected, 2)) |>
-  select(ka_bp, strict, lenient, expected, present = strict_taxa,
+  select(ka_bp, strict, lenient, present = strict_taxa,
          marginal = marginal_taxa)
 ```
 

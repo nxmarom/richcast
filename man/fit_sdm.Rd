@@ -39,7 +39,8 @@ default, or a subset of them.}
 \item{buffer}{Study-extent buffer around the range's bounding box, as a
 proportion of the box's diagonal.}
 
-\item{threshold}{\code{"p10"}, or a fixed number in \verb{(0, 1)}.}
+\item{threshold}{\code{"p10"} (the default), \code{"tss"}, or a fixed number in
+\verb{(0, 1)}.}
 
 \item{test_frac}{Share of presences and background held out for evaluation.}
 
@@ -62,7 +63,8 @@ resolution.}
 \value{
 A \code{richcast_sdm}. \code{metrics} holds AUC and Boyce for \code{maxent}, \code{rf}
 and \code{ensemble}; \code{range_cells} is the number of grid cells with climate the
-range covers. A model fitted with fossils also records \code{n_fossil},
+range covers; \code{threshold} is the cutoff in use and \code{cutoffs} holds both
+the \code{p10} and \code{tss} cutoffs. A model fitted with fossils also records \code{n_fossil},
 \code{n_fossil_background}, \code{fossil_units} and \code{fossil_draws} (the unit, age
 and slice of every fossil presence).
 }
@@ -95,7 +97,13 @@ flattening predicted probabilities toward zero.
 The presence/absence threshold is applied to the ensemble only. The default
 \code{"p10"} is the tenth percentile of ensemble predictions at the training
 presences: it tolerates 10\% omission, and being referenced to the presences
-it does not tighten as the background widens.
+it does not tighten as the background widens. \code{"tss"} is the cutoff that
+maximises the true skill statistic on the present-day surface, with cells
+inside the range polygon as presences and the rest of the study extent as
+absences (see \code{\link[=presence_thresholds]{presence_thresholds()}}); it is background-sensitive, and on a
+wide study extent can sit well above p10. Both cutoffs are stored on every
+model in \code{cutoffs} whichever rule is chosen, so \code{\link[=richness_at]{richness_at()}} and
+\code{\link[=richness_in]{richness_in()}} can switch between them without refitting.
 }
 
 \section{Evaluation}{
@@ -132,7 +140,7 @@ same slices, so the model is not taught to tell past climate from
 present.
 \item The study extent is the bounding box of the range and the fossil sites
 together, widened by \code{buffer} as usual.
-\item The \code{p10} threshold is taken from the range's pseudo-presences only, and
+\item The \code{p10} and \code{tss} cutoffs are taken from the range only, and
 the hold-out is drawn from the range's presences and background only,
 with every fossil point kept in training. The metrics therefore show how
 well the model still fits the present-day range.

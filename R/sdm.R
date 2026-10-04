@@ -63,7 +63,13 @@ bioclim_vars <- c("bio01", "bio04", "bio05", "bio06",
 #' The presence/absence threshold is applied to the ensemble only. The default
 #' `"p10"` is the tenth percentile of ensemble predictions at the training
 #' presences: it tolerates 10% omission, and being referenced to the presences
-#' it does not tighten as the background widens.
+#' it does not tighten as the background widens. `"tss"` is the cutoff that
+#' maximises the true skill statistic on the present-day surface, with cells
+#' inside the range polygon as presences and the rest of the study extent as
+#' absences (see [presence_thresholds()]); it is background-sensitive, and on a
+#' wide study extent can sit well above p10. Both cutoffs are stored on every
+#' model in `cutoffs` whichever rule is chosen, so [richness_at()] and
+#' [richness_in()] can switch between them without refitting.
 #'
 #' # Evaluation
 #'
@@ -99,7 +105,7 @@ bioclim_vars <- c("bio01", "bio04", "bio05", "bio06",
 #'   present.
 #' * The study extent is the bounding box of the range and the fossil sites
 #'   together, widened by `buffer` as usual.
-#' * The `p10` threshold is taken from the range's pseudo-presences only, and
+#' * The `p10` and `tss` cutoffs are taken from the range only, and
 #'   the hold-out is drawn from the range's presences and background only,
 #'   with every fossil point kept in training. The metrics therefore show how
 #'   well the model still fits the present-day range.
@@ -113,7 +119,8 @@ bioclim_vars <- c("bio01", "bio04", "bio05", "bio06",
 #' @param n_background Number of background points drawn outside it.
 #' @param buffer Study-extent buffer around the range's bounding box, as a
 #'   proportion of the box's diagonal.
-#' @param threshold `"p10"`, or a fixed number in `(0, 1)`.
+#' @param threshold `"p10"` (the default), `"tss"`, or a fixed number in
+#'   `(0, 1)`.
 #' @param test_frac Share of presences and background held out for evaluation.
 #' @param num_trees Trees in the random forest.
 #' @param seed Random seed for sampling, the hold-out split and the forest.
@@ -127,7 +134,8 @@ bioclim_vars <- c("bio01", "bio04", "bio05", "bio06",
 #' @param quiet Suppress progress messages.
 #' @return A `richcast_sdm`. `metrics` holds AUC and Boyce for `maxent`, `rf`
 #'   and `ensemble`; `range_cells` is the number of grid cells with climate the
-#'   range covers. A model fitted with fossils also records `n_fossil`,
+#'   range covers; `threshold` is the cutoff in use and `cutoffs` holds both
+#'   the `p10` and `tss` cutoffs. A model fitted with fossils also records `n_fossil`,
 #'   `n_fossil_background`, `fossil_units` and `fossil_draws` (the unit, age
 #'   and slice of every fossil presence).
 #' @references Hirzel, A. H., Le Lay, G., Helfer, V., Randin, C., & Guisan, A.
@@ -160,6 +168,7 @@ fit_sdm <- function(db,
   }
 
   predictors <- check_predictors(predictors)
+  check_threshold(threshold)
   row <- db_row(db, species)
   sp_name <- row$species
   sp_geom <- sf::st_geometry(row)
@@ -244,14 +253,23 @@ fit_sdm <- function(db,
   # --- Final fit on every point -------------------------------------------
   members <- fit_members(response, covars, num_trees, seed)
   fitted <- predict_members(members, covars)
-  cutoff <- resolve_threshold(threshold, response[modern],
-                              fitted[modern, "ensemble"])
+
+  # --- Present-day prediction and cutoffs ---------------------------------
+  suit <- predict_surface(present, members, land_geom)
+  cutoffs <- c(
+    p10 = resolve_threshold("p10", response[modern], fitted[modern, "ensemble"]),
+    tss = range_tss(suit, sp_vec)
+  )
+  cutoff <- if (is.numeric(threshold)) threshold else cutoffs[[threshold]]
+  if (is.na(cutoff)) {
+    rc_abort(c(
+      "[{sp_name}] The {.val {threshold}} threshold could not be computed.",
+      "i" = "The range covers no cells with climate, or covers the whole extent."
+    ))
+  }
 
   ens <- metrics[metrics$model == "ensemble", ]
   say("[{sp_name}] ensemble AUC {round(ens$auc, 3)}, Boyce {round(ens$boyce, 3)}, threshold {round(cutoff, 3)}")
-
-  # --- Present-day prediction ---------------------------------------------
-  suit <- predict_surface(present, members, land_geom)
 
   out <- structure(
     list(
@@ -260,6 +278,7 @@ fit_sdm <- function(db,
       predictors     = predictors,
       threshold      = cutoff,
       threshold_rule = if (is.character(threshold)) threshold else "fixed",
+      cutoffs        = cutoffs,
       metrics        = metrics,
       n_presence     = nrow(pres_df),
       n_background   = nrow(bg_df),
@@ -517,17 +536,38 @@ boyce_index <- function(pres, fit, res = 100) {
 #' Resolve the presence/absence threshold
 #' @noRd
 resolve_threshold <- function(threshold, obs, pred) {
-  if (is.numeric(threshold)) {
-    if (length(threshold) != 1 || threshold <= 0 || threshold >= 1) {
-      rc_abort("A fixed {.arg threshold} must lie strictly between 0 and 1.")
-    }
-    return(threshold)
-  }
+  check_threshold(threshold)
+  if (is.numeric(threshold)) return(threshold)
   if (!identical(threshold, "p10")) {
-    rc_abort('{.arg threshold} must be "p10" or a number in (0, 1).')
+    rc_abort("The {.val {threshold}} threshold needs the present-day surface.",
+             .internal = TRUE)
   }
   # Tenth-percentile training presence: tolerate 10% omission.
   unname(stats::quantile(pred[obs == 1], 0.10, na.rm = TRUE))
+}
+
+#' Check a threshold rule: "p10", "tss", or a fixed number
+#' @noRd
+check_threshold <- function(threshold) {
+  if (is.numeric(threshold)) {
+    if (length(threshold) != 1 || is.na(threshold) || threshold <= 0 ||
+        threshold >= 1) {
+      rc_abort("A fixed {.arg threshold} must lie strictly between 0 and 1.")
+    }
+  } else if (!(is.character(threshold) && length(threshold) == 1 &&
+               threshold %in% c("p10", "tss"))) {
+    rc_abort('{.arg threshold} must be "p10", "tss", or a number in (0, 1).')
+  }
+  invisible(threshold)
+}
+
+#' TSS-maximising cutoff: range cells as presences, the rest as absences
+#' @noRd
+range_tss <- function(suit, poly) {
+  pres <- terra::values(terra::mask(suit, poly), mat = FALSE, na.rm = TRUE)
+  abs <- terra::values(terra::mask(suit, poly, inverse = TRUE), mat = FALSE,
+                       na.rm = TRUE)
+  tss_cutoff(pres, abs)
 }
 
 

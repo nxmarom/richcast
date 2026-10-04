@@ -242,8 +242,9 @@ res <- run_hindcast_series(
 res
 ```
 
-Richness per slice. `mean_richness` counts species above their threshold;
-`mean_expected` sums their suitabilities instead:
+Richness per slice. `mean_richness` counts species above their threshold.
+(`mean_expected`, the summed suitability, is deprecated: suitabilities are not
+calibrated probabilities, so their sum is not a richness estimate.)
 
 ```{r}
 res$richness
@@ -266,7 +267,7 @@ The surfaces themselves are kept, as `richness_surface()` rasters or as a tidy
 `richness_grid()` table ready for plotting:
 
 ```{r}
-richness_surface(res, 1050, layer = "both")
+richness_surface(res, 1050)
 ```
 
 ## Richness at a point
@@ -279,6 +280,16 @@ pt <- richness_at(res, lon = 2, lat = 2, time = c("present", 1050),
                   climate = clim)
 pt
 pt$species
+```
+
+Presence uses each model's p10 threshold by default. Every model also stores
+the cutoff that maximises the true skill statistic, which is usually more
+lenient on a wide study extent; `threshold = "tss"` applies it instead, and
+the two counts bracket a plausible richness:
+
+```{r}
+richness_at(res, lon = 2, lat = 2, time = c("present", 1050),
+            climate = clim, threshold = "tss")$richness
 ```
 
 ## Where to go next

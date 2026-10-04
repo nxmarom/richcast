@@ -55,14 +55,15 @@ aborts the run.}
 
 \item{quiet}{Suppress per-species progress.}
 
-\item{...}{Further arguments passed to \code{\link[=fit_sdm]{fit_sdm()}}, e.g. \code{predictors} or
-\code{n_presence}.}
+\item{...}{Further arguments passed to \code{\link[=fit_sdm]{fit_sdm()}}, e.g. \code{predictors},
+\code{n_presence} or \code{threshold}.}
 }
 \value{
 A \code{richcast_series}:
 \itemize{
 \item \code{richness}: one row per slice (\code{present} first) with mean, median and
-maximum richness over the region, and \code{mean_expected}.
+maximum richness over the region, and \code{mean_expected} (deprecated, see
+above).
 \item \code{species}: one row per taxon per slice. \code{cells} counts suitable cells
 over the study extent (summed over members for a merged taxon),
 \code{region_cells} over the region, each with its change from the present.
@@ -85,10 +86,17 @@ study extent, then projected repeatedly. Training is independent of the
 region: the region decides only which species are trained and where
 richness is summarised.
 
-Each slice gets two surfaces on the climate grid cropped to the region:
-\code{richness}, the number of species above their own threshold in each cell,
-and \code{expected}, the sum of the species' ensemble suitabilities -- a
-threshold-free estimate of how many species a cell supports.
+Each slice gets a \code{richness} surface on the climate grid cropped to the
+region: the number of species above their own threshold in each cell. The
+threshold is p10 unless \code{threshold = "tss"} is passed through to
+\code{\link[=fit_sdm]{fit_sdm()}}.
+
+The surfaces also carry an \code{expected} layer, the sum of the species'
+ensemble suitabilities. It is \strong{deprecated} and will be removed: the
+suitabilities are not calibrated probabilities of presence (MaxEnt's
+cloglog output, and a random forest trained on balanced presence and
+background draws), so their sum is not an estimate of how many species a
+cell holds. Compare the p10 and TSS counts instead.
 }
 \seealso{
 \code{\link[=fit_sdm]{fit_sdm()}}, \code{\link[=richness_at]{richness_at()}}, \code{\link[=richness_surface]{richness_surface()}}

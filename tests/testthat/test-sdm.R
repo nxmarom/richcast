@@ -25,7 +25,8 @@ test_that("p10 is the tenth percentile of presence predictions", {
                unname(stats::quantile(seq(0.1, 1, by = 0.1), 0.1)))
   expect_equal(richcast:::resolve_threshold(0.3, obs, pred), 0.3)
   expect_error(richcast:::resolve_threshold(1.5, obs, pred), "between 0 and 1")
-  expect_error(richcast:::resolve_threshold("tss", obs, pred), "p10")
+  expect_error(richcast:::resolve_threshold("mtp", obs, pred), "tss")
+  expect_error(richcast:::check_threshold(c("p10", "tss")), "tss")
 })
 
 test_that("the study extent is the bbox plus 30% of its diagonal", {

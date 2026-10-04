@@ -5,8 +5,9 @@
 # each species' ensemble suitability is laid onto one grid covering the
 # region, thresholded, and summed. The grid is the climate grid itself, cropped
 # to the region, so nothing is resampled across resolutions. The same pass
-# sums the raw suitabilities, giving expected richness alongside the
-# thresholded count.
+# sums the raw suitabilities into the deprecated `expected` layer, which is
+# not a richness estimate because suitabilities are not calibrated
+# probabilities.
 # ==============================================================================
 
 #' Maximum distance, in degrees, between a species' range and the region
