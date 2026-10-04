@@ -36,7 +36,8 @@ test_that("richness surfaces count thresholded species and sum suitability", {
   skip_if_not_installed("maxnet")
   skip_if_not_installed("ranger")
   res <- run_fixture_series(withr::local_tempdir())$res
-  s <- richness_surface(res, "present", layer = "both")
+  expect_warning(s <- richness_surface(res, "present", layer = "both"),
+                 class = "richcast_deprecated")
   expect_equal(names(s), c("richness", "expected"))
 
   # The present richness surface is exactly the sum of the two binary maps.
@@ -98,7 +99,7 @@ test_that("richness_at matches the surfaces and lists the expected species", {
   expect_equal(nrow(pt$species), 8)
 
   for (tt in c("present", "850")) {
-    s <- richness_surface(res, tt, layer = "both")
+    s <- suppressWarnings(richness_surface(res, tt, layer = "both"))
     at <- terra::extract(s, cbind(c(2.25, 7.75), c(2.25, 7.75)))
     got <- pt$richness[pt$richness$time == tt, ]
     got <- got[order(got$lon), ]
@@ -288,4 +289,67 @@ test_that("suitability_grid and presence_thresholds give cell-level detail", {
   expect_true(all(mp$tss > 0 & mp$tss < 1))
   cut <- richcast:::tss_cutoff(c(0.8, 0.9), c(0.1, 0.2))
   expect_true(cut > 0.2 && cut <= 0.8)
+})
+
+test_that("threshold switches richness_at and richness_in between p10 and TSS", {
+  skip_if_not_installed("maxnet")
+  skip_if_not_installed("ranger")
+  x <- run_fixture_series(withr::local_tempdir())
+  res <- x$res
+  db <- two_species_db()
+  cuts <- lapply(res$fits, function(f) f$cutoffs)
+  expect_true(all(vapply(cuts, function(c) all(names(c) == c("p10", "tss")),
+                         logical(1))))
+  # The stored TSS cutoff is the one presence_thresholds() reports.
+  mp <- presence_thresholds(res, db)
+  expect_equal(mp$tss, unname(vapply(cuts[mp$species], `[[`, numeric(1), "tss")))
+
+  lon <- c(2.25, 5.25, 7.75)
+  lat <- c(2.25, 5.25, 7.75)
+  dflt <- richness_at(res, lon, lat, climate = x$clim)
+  p10 <- richness_at(res, lon, lat, climate = x$clim, threshold = "p10")
+  tss <- richness_at(res, lon, lat, climate = x$clim, threshold = "tss")
+  expect_equal(dflt, p10)
+  expect_equal(tss$species$suitability, p10$species$suitability)
+  want <- unname(vapply(cuts[tss$species$species], `[[`, numeric(1), "tss"))
+  expect_equal(tss$species$threshold, want)
+  expect_equal(tss$species$present,
+               !is.na(tss$species$suitability) & tss$species$suitability > want)
+  expect_error(richness_at(res, 2, 2, climate = x$clim, threshold = "mtp"),
+               "p10")
+
+  block <- region(c(2, 3, 2, 3))
+  fa <- richness_in(res, block, climate = x$clim, threshold = "tss")
+  expect_equal(fa$species$threshold,
+               unname(vapply(cuts[fa$species$species], `[[`, numeric(1), "tss")))
+  g <- suitability_grid(res, block, "present", x$clim, threshold = "tss")
+  expect_equal(g$threshold,
+               unname(vapply(cuts[g$species], `[[`, numeric(1), "tss")))
+
+  # Models saved before cutoffs were stored need refresh_thresholds().
+  old <- res
+  old$fits <- lapply(old$fits, function(f) { f$cutoffs <- NULL; f })
+  expect_equal(richness_at(old, lon, lat, climate = x$clim, threshold = "p10"),
+               p10)
+  expect_error(richness_at(old, lon, lat, climate = x$clim, threshold = "tss"),
+               "refresh_thresholds")
+  back <- refresh_thresholds(old, db)
+  expect_equal(lapply(back$fits, function(f) f$cutoffs), cuts)
+  expect_equal(refresh_thresholds(old$fits$Genus_low, db)$cutoffs,
+               cuts$Genus_low)
+})
+
+test_that("fit_sdm can fit with the TSS cutoff", {
+  skip_if_not_installed("maxnet")
+  skip_if_not_installed("ranger")
+  clim <- structured_climate(withr::local_tempdir(), times = 850)
+  f <- fit_sdm(two_species_db(), "Genus_low", clim, threshold = "tss",
+               land = fake_land(), num_trees = 50, quiet = TRUE)
+  expect_equal(f$threshold_rule, "tss")
+  expect_equal(f$threshold, f$cutoffs[["tss"]])
+  expect_equal(f$present_cells,
+               as.integer(terra::global(suitability(f) > f$threshold, "sum",
+                                        na.rm = TRUE)[1, 1]))
+  expect_error(fit_sdm(two_species_db(), "Genus_low", clim, threshold = "mtp"),
+               "tss")
 })

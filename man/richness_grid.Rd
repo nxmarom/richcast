@@ -16,6 +16,7 @@ include \code{"present"} to add the present day.}
 }
 \value{
 A tibble with \code{x}, \code{y}, \code{time}, \code{richness} and \code{expected}.
+\code{expected} is deprecated; see \code{\link[=run_hindcast_series]{run_hindcast_series()}}.
 }
 \description{
 Long-format cell values for every slice, ready for a faceted map.

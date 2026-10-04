@@ -4,7 +4,7 @@
 \alias{richness_in}
 \title{Predict richness, and the species expected, over a small focus area}
 \usage{
-richness_in(x, area, time = "present", climate)
+richness_in(x, area, time = "present", climate, threshold = NULL)
 }
 \arguments{
 \item{x}{A \code{richcast_series}, a single \code{richcast_sdm}, or a list of them.
@@ -15,6 +15,9 @@ For a series, merged taxa are reported once, as in \code{\link[=run_hindcast_ser
 \item{time}{Year(s) CE, and/or \code{"present"}.}
 
 \item{climate}{The climate source the models were fitted with.}
+
+\item{threshold}{Which cutoff sets presence: \code{NULL} for each model's fitted
+threshold, or \code{"p10"} or \code{"tss"}. See \code{\link[=richness_at]{richness_at()}}.}
 }
 \value{
 A \code{richcast_area} with two tibbles: \code{richness} (one row per time)
@@ -31,8 +34,9 @@ species the models place anywhere in it.
 Every grid cell whose centre lies inside \code{area} is evaluated. A species is
 \strong{present} in the area when its ensemble suitability clears its threshold
 in at least one of those cells, and its \code{suitability} is the highest value
-among them, so the two agree: present exactly when \code{suitability > threshold}. \code{richness} counts the species present; \code{expected_richness}
-sums their suitabilities. Cells without climate (sea, or ice) are skipped,
+among them, so the two agree: present exactly when \code{suitability > threshold}. \code{richness} counts the species present. \code{expected_richness}
+sums their suitabilities and is deprecated, as in \code{\link[=richness_at]{richness_at()}}. Cells
+without climate (sea, or ice) are skipped,
 so an area on a coast can hold fewer cells in some slices than others --
 \code{cells} records how many were evaluated.
 }
@@ -41,6 +45,8 @@ so an area on a coast can hold fewer cells in some slices than others --
 focus <- region(c(34.5, 35.5, 31.5, 32.5), label = "focus area")
 fa <- richness_in(res, focus, time = c("present", -4050), climate = clim)
 fa$richness
+fa_tss <- richness_in(res, focus, time = c("present", -4050), climate = clim,
+                      threshold = "tss")
 }
 }
 \seealso{

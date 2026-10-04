@@ -4,7 +4,7 @@
 \alias{richness_at}
 \title{Predict richness, and the species expected, at coordinates}
 \usage{
-richness_at(x, lon, lat, time = "present", climate)
+richness_at(x, lon, lat, time = "present", climate, threshold = NULL)
 }
 \arguments{
 \item{x}{A \code{richcast_series}, a single \code{richcast_sdm}, or a list of them.}
@@ -14,21 +14,32 @@ richness_at(x, lon, lat, time = "present", climate)
 \item{time}{Year(s) CE, and/or \code{"present"}.}
 
 \item{climate}{The climate source the models were fitted with.}
+
+\item{threshold}{Which cutoff sets presence: \code{NULL} (the default) uses each
+model's fitted threshold (p10 unless fitted otherwise); \code{"p10"} or \code{"tss"}
+picks that cutoff from the model's stored \code{cutoffs}. Models saved before
+cutoffs were stored need \code{\link[=refresh_thresholds]{refresh_thresholds()}} first for \code{"tss"}.}
 }
 \value{
 A \code{richcast_point} with two tibbles: \code{richness} (one row per point
-per time) and \code{species} (one row per point, time and species).
+per time) and \code{species} (one row per point, time and species, with the
+\code{threshold} applied).
 }
 \description{
 Evaluates every fitted model at the given points, so the answer is exact at
 the climate grid's resolution and needs no stored surfaces. A species counts
-towards \code{richness} where its ensemble suitability is above its own
-threshold; \code{expected_richness} sums the suitabilities instead. The
-\code{species} table lists every modelled species at each point, most suitable
-first, which is the expected species list read straight off the suitability
-surface.
+towards \code{richness} where its ensemble suitability is above its threshold:
+the one it was fitted with by default, or the p10 or TSS cutoff chosen by
+\code{threshold}. The \code{species} table lists every modelled species at each
+point, most suitable first, which is the expected species list read
+straight off the suitability surface.
 }
 \details{
+\code{expected_richness}, the sum of the suitabilities, is deprecated and will
+be removed: suitabilities are not calibrated probabilities, so their sum is
+not a richness estimate. For a band of plausible richness, compare
+\code{threshold = "p10"} with \code{threshold = "tss"}.
+
 A point outside a species' study extent is outside anything its model can
 speak to, so that species has \code{NA} suitability there and is not counted.
 }
@@ -38,6 +49,8 @@ pt <- richness_at(res, lon = 35.5, lat = 33, time = c("present", 850),
                   climate = clim)
 pt$richness
 subset(pt$species, present)
+lenient <- richness_at(res, lon = 35.5, lat = 33, time = c("present", 850),
+                       climate = clim, threshold = "tss")
 }
 }
 \seealso{

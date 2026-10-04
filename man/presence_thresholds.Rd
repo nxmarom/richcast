@@ -12,8 +12,8 @@ presence_thresholds(x, db)
 \item{db}{The \code{richcast_db} the models were fitted from.}
 }
 \value{
-A tibble with \code{species}, \code{threshold} (the fitted p10 threshold),
-\code{min_presence} and \code{tss}.
+A tibble with \code{species}, \code{threshold} (the fitted threshold, p10
+unless fitted otherwise), \code{min_presence} and \code{tss}.
 }
 \description{
 richcast binarises with the p10 threshold, which tolerates 10\% omission of
@@ -31,7 +31,9 @@ edges.
 \item \code{tss}: the cutoff that maximises the true skill statistic (sensitivity +
 specificity - 1) when cells inside the range polygon are treated as
 presences and the rest of the study extent as absences. It depends on how
-wide the study extent is, and can fall above or below p10.
+wide the study extent is, and can fall above or below p10. It is the
+cutoff that \code{threshold = "tss"} applies in \code{\link[=richness_at]{richness_at()}} and
+\code{\link[=richness_in]{richness_in()}}.
 }
 }
 \seealso{

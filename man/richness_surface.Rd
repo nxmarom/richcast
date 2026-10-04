@@ -11,8 +11,10 @@ richness_surface(series, time, layer = c("richness", "expected", "both"))
 
 \item{time}{Year CE, or \code{"present"}.}
 
-\item{layer}{\code{"richness"} for the count of species above threshold,
-\code{"expected"} for the sum of suitabilities, or \code{"both"}.}
+\item{layer}{\code{"richness"} for the count of species above threshold.
+\code{"expected"} (the sum of suitabilities) and \code{"both"} are deprecated: the
+suitabilities are not calibrated probabilities, so their sum is not a
+richness estimate. See \code{\link[=run_hindcast_series]{run_hindcast_series()}}.}
 }
 \value{
 A \code{SpatRaster}.

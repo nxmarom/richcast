@@ -463,8 +463,10 @@ res$models |>
 ## Regional richness through time
 
 Per slice, over the region's land cells: `strict` is the mean number of taxa
-per cell above their p10 threshold, `lenient` the mean above their TSS
-threshold, and `expected` the mean sum of suitabilities (no threshold).
+per cell above their p10 threshold, and `lenient` the mean above their TSS
+threshold. Summing the suitabilities instead would not give a richness: they
+are not calibrated probabilities of presence, so the p10 and TSS counts are
+read as the bounds of a band.
 
 
 ``` r
@@ -472,28 +474,26 @@ rich <- bind_rows(lapply(slice_keys, function(k) {
   ct <- cell_tbl[[k]]
   per_cell <- ct$region |>
     group_by(x, y) |>
-    summarise(strict = sum(strict), lenient = sum(lenient),
-              expected = sum(suit), .groups = "drop")
+    summarise(strict = sum(strict), lenient = sum(lenient), .groups = "drop")
   tibble(time = k, ka_bp = to_ka(k), cells = ct$region_cells,
-         strict = mean(per_cell$strict), lenient = mean(per_cell$lenient),
-         expected = mean(per_cell$expected))
+         strict = mean(per_cell$strict), lenient = mean(per_cell$lenient))
 }))
 rich |>
-  select(ka_bp, cells, strict, expected, lenient) |>
-  mutate(across(c(strict, expected, lenient), \(x) round(x, 2)))
-#> # A tibble: 72 × 5
-#>    ka_bp cells strict expected lenient
-#>    <dbl> <int>  <dbl>    <dbl>   <dbl>
-#>  1     0  3489   1.55     2.04    2.25
-#>  2   120  3521   1.52     2.04    2.26
-#>  3   118  3551   1.36     1.94    2.2 
-#>  4   116  3590   1.35     1.95    2.21
-#>  5   114  3604   1.51     2.04    2.34
-#>  6   112  3632   1.69     2.2     2.49
-#>  7   110  3633   1.54     2.06    2.36
-#>  8   108  3631   1.56     2.05    2.27
-#>  9   106  3620   1.55     2.08    2.38
-#> 10   104  3601   1.64     2.15    2.5 
+  select(ka_bp, cells, strict, lenient) |>
+  mutate(across(c(strict, lenient), \(x) round(x, 2)))
+#> # A tibble: 72 × 4
+#>    ka_bp cells strict lenient
+#>    <dbl> <int>  <dbl>   <dbl>
+#>  1     0  3489   1.55    2.25
+#>  2   120  3521   1.52    2.26
+#>  3   118  3551   1.36    2.2 
+#>  4   116  3590   1.35    2.21
+#>  5   114  3604   1.51    2.34
+#>  6   112  3632   1.69    2.49
+#>  7   110  3633   1.54    2.36
+#>  8   108  3631   1.56    2.27
+#>  9   106  3620   1.55    2.38
+#> 10   104  3601   1.64    2.5 
 #> # ℹ 62 more rows
 ```
 
@@ -605,29 +605,27 @@ fa_species <- bind_rows(lapply(slice_keys, function(k) {
 fa_rich <- fa_species |>
   group_by(time, ka_bp) |>
   summarise(strict = sum(strict), lenient = sum(lenient),
-            expected = sum(suitability),
             strict_taxa = paste(gsub("_", " ", taxon[strict]), collapse = ", "),
             marginal_taxa = paste(gsub("_", " ", taxon[lenient & !strict]), collapse = ", "),
             .groups = "drop") |>
   arrange(ka_bp)
 
 fa_rich |>
-  mutate(expected = round(expected, 2)) |>
-  select(ka_bp, strict, lenient, expected, present = strict_taxa,
+  select(ka_bp, strict, lenient, present = strict_taxa,
          marginal = marginal_taxa)
-#> # A tibble: 72 × 6
-#>    ka_bp strict lenient expected present        marginal
-#>    <dbl>  <int>   <int>    <dbl> <chr>          <chr>   
-#>  1     0      3       6     4.03 Cervus elaphus ""      
-#>  2     1      3       6     3.98 Cervus elaphus ""      
-#>  3     2      3       5     3.83 Cervus elaphus ""      
-#>  4     3      3       6     4.01 Cervus elaphus ""      
-#>  5     4      3       6     4    Cervus elaphus ""      
-#>  6     5      3       5     3.71 Cervus elaphus ""      
-#>  7     6      3       5     3.89 Cervus elaphus ""      
-#>  8     7      3       5     3.77 Cervus elaphus ""      
-#>  9     8      3       5     3.79 Cervus elaphus ""      
-#> 10     9      4       4     3.78 Dama sp        ""      
+#> # A tibble: 72 × 5
+#>    ka_bp strict lenient present        marginal
+#>    <dbl>  <int>   <int> <chr>          <chr>   
+#>  1     0      3       6 Cervus elaphus ""      
+#>  2     1      3       6 Cervus elaphus ""      
+#>  3     2      3       5 Cervus elaphus ""      
+#>  4     3      3       6 Cervus elaphus ""      
+#>  5     4      3       6 Cervus elaphus ""      
+#>  6     5      3       5 Cervus elaphus ""      
+#>  7     6      3       5 Cervus elaphus ""      
+#>  8     7      3       5 Cervus elaphus ""      
+#>  9     8      3       5 Cervus elaphus ""      
+#> 10     9      4       4 Dama sp        ""      
 #> # ℹ 62 more rows
 ```
 

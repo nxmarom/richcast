@@ -4,7 +4,7 @@
 \alias{suitability_grid}
 \title{Suitability of every fitted species in every cell of an area}
 \usage{
-suitability_grid(x, area, time, climate)
+suitability_grid(x, area, time, climate, threshold = NULL)
 }
 \arguments{
 \item{x}{A \code{richcast_series}, a single \code{richcast_sdm}, or a list of them.
@@ -15,10 +15,13 @@ For a series, merged taxa are reported once, as in \code{\link[=run_hindcast_ser
 \item{time}{A single year CE, or \code{"present"}.}
 
 \item{climate}{The climate source the models were fitted with.}
+
+\item{threshold}{Which cutoff sets presence: \code{NULL} for each model's fitted
+threshold, or \code{"p10"} or \code{"tss"}. See \code{\link[=richness_at]{richness_at()}}.}
 }
 \value{
-A tibble with \code{x}, \code{y}, \code{species}, \code{suitability} and \code{threshold},
-one row per cell and fitted species. The number of cells with climate is
+A tibble with \code{x}, \code{y}, \code{species}, \code{suitability} and \code{threshold}
+(the cutoff chosen by \code{threshold}), one row per cell and fitted species. The number of cells with climate is
 attached as the \code{cells} attribute.
 }
 \description{

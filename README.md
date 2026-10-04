@@ -115,20 +115,22 @@ it to every slice within its own study extent.
 ```r
 res <- run_hindcast_series(db, clim, times = bp_to_ce(steps[steps < 0]),
                            region = region("middle_east"))
-res$richness   # per slice: mean, median and max richness; mean expected
+res$richness   # per slice: mean, median and max richness
 res$models     # per species: AUC and Boyce for RF, MaxEnt and the ensemble
 res$species    # per taxon and slice: occupied cells, and change from today
 ```
 
-Each slice gives two surfaces on the climate grid: **`richness`**, the number
-of taxa above their threshold in a cell, and **`expected`**, the sum of their
-suitabilities, which needs no threshold. `richness_surface()` and
-`richness_grid()` return them for mapping.
+Each slice gives a **`richness`** surface on the climate grid: the number of
+taxa above their threshold in a cell. `richness_surface()` and
+`richness_grid()` return it for mapping. The `expected` layer (the sum of
+suitabilities) is deprecated: the suitabilities are not calibrated
+probabilities, so their sum is not a richness estimate.
 
 ### 6. Points, focus areas and thresholds
 
-* `richness_at(res, lon, lat, time, climate)` gives richness, expected
-  richness and the ranked list of expected taxa at a coordinate.
+* `richness_at(res, lon, lat, time, climate)` gives richness and the ranked
+  list of expected taxa at a coordinate. `threshold = "tss"` counts presence
+  at each model's TSS-maximising cutoff instead of p10.
 * `richness_in(res, area, time, climate)` does the same for a small **focus
   area** of a few cells: a taxon is present if it clears its threshold in any
   of them. `suitability_grid()` returns the cell-level values underneath.

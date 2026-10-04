@@ -19,6 +19,24 @@
   `inst/extdata/levant_site_series.csv` (CC BY-SA 4.0; built from ROAD, NERD
   and p3k14c, see `inst/extdata/README.md`). Its sources are in
   `citation("richcast")` and the vignette's new reference list.
+* **TSS threshold switch**: `richness_at()`, `richness_in()` and
+  `suitability_grid()` take `threshold = "p10"` or `"tss"` to choose the
+  cutoff that sets presence. The default, `NULL`, keeps each model's fitted
+  threshold (p10 unless fitted otherwise), so existing results are unchanged.
+  `fit_sdm()` now stores both cutoffs on every model in `$cutoffs`, and
+  accepts `threshold = "tss"` (also through `run_hindcast_series(...)`) to fit
+  and build richness surfaces with the TSS cutoff. The TSS cutoff is the one
+  `presence_thresholds()` already reported. Models saved by an earlier
+  version can be given their cutoffs without refitting by the new
+  `refresh_thresholds(x, db)`.
+* **Summed suitability is deprecated.** The `expected` surface layer, the
+  `mean_expected` column and `expected_richness` in `richness_at()` and
+  `richness_in()` sum the models' suitabilities, which are not calibrated
+  probabilities of presence (MaxEnt on the cloglog scale; a random forest
+  trained on balanced presence and background draws). Their sum is therefore
+  not a richness estimate. They remain for now but will be removed;
+  `richness_surface(layer = "expected")` and `layer = "both"` warn, and the
+  print methods no longer show them. Compare the p10 and TSS counts instead.
 
 # richcast 0.1.0
 

@@ -13,10 +13,17 @@
 #' region: the region decides only which species are trained and where
 #' richness is summarised.
 #'
-#' Each slice gets two surfaces on the climate grid cropped to the region:
-#' `richness`, the number of species above their own threshold in each cell,
-#' and `expected`, the sum of the species' ensemble suitabilities -- a
-#' threshold-free estimate of how many species a cell supports.
+#' Each slice gets a `richness` surface on the climate grid cropped to the
+#' region: the number of species above their own threshold in each cell. The
+#' threshold is p10 unless `threshold = "tss"` is passed through to
+#' [fit_sdm()].
+#'
+#' The surfaces also carry an `expected` layer, the sum of the species'
+#' ensemble suitabilities. It is **deprecated** and will be removed: the
+#' suitabilities are not calibrated probabilities of presence (MaxEnt's
+#' cloglog output, and a random forest trained on balanced presence and
+#' background draws), so their sum is not an estimate of how many species a
+#' cell holds. Compare the p10 and TSS counts instead.
 #'
 #' @param db A `richcast_db` from [build_taxon_db()].
 #' @param climate A climate source from [climate_dir()] or [pastclim_climate()].
@@ -44,11 +51,12 @@
 #' @param on_error `"warn"` skips a failing species and carries on; `"stop"`
 #'   aborts the run.
 #' @param quiet Suppress per-species progress.
-#' @param ... Further arguments passed to [fit_sdm()], e.g. `predictors` or
-#'   `n_presence`.
+#' @param ... Further arguments passed to [fit_sdm()], e.g. `predictors`,
+#'   `n_presence` or `threshold`.
 #' @return A `richcast_series`:
 #'   * `richness`: one row per slice (`present` first) with mean, median and
-#'     maximum richness over the region, and `mean_expected`.
+#'     maximum richness over the region, and `mean_expected` (deprecated, see
+#'     above).
 #'   * `species`: one row per taxon per slice. `cells` counts suitable cells
 #'     over the study extent (summed over members for a merged taxon),
 #'     `region_cells` over the region, each with its change from the present.
@@ -276,13 +284,16 @@ models_table <- function(fits) {
 #'
 #' @param series A `richcast_series` from [run_hindcast_series()].
 #' @param time Year CE, or `"present"`.
-#' @param layer `"richness"` for the count of species above threshold,
-#'   `"expected"` for the sum of suitabilities, or `"both"`.
+#' @param layer `"richness"` for the count of species above threshold.
+#'   `"expected"` (the sum of suitabilities) and `"both"` are deprecated: the
+#'   suitabilities are not calibrated probabilities, so their sum is not a
+#'   richness estimate. See [run_hindcast_series()].
 #' @return A `SpatRaster`.
 #' @seealso [richness_grid()], [run_hindcast_series()]
 #' @export
 richness_surface <- function(series, time, layer = c("richness", "expected", "both")) {
   layer <- match.arg(layer)
+  if (layer != "richness") warn_expected_deprecated(sprintf('layer = "%s"', layer))
   check_surfaces(series)
   key <- as.character(time)
   if (!key %in% names(series$surfaces)) {
@@ -304,6 +315,7 @@ richness_surface <- function(series, time, layer = c("richness", "expected", "bo
 #'   include `"present"` to add the present day.
 #' @param drop_na Drop cells no model covered.
 #' @return A tibble with `x`, `y`, `time`, `richness` and `expected`.
+#'   `expected` is deprecated; see [run_hindcast_series()].
 #' @seealso [richness_surface()]
 #' @examples
 #' \dontrun{
@@ -335,11 +347,16 @@ richness_grid <- function(series, times = NULL, drop_na = TRUE) {
 #'
 #' Evaluates every fitted model at the given points, so the answer is exact at
 #' the climate grid's resolution and needs no stored surfaces. A species counts
-#' towards `richness` where its ensemble suitability is above its own
-#' threshold; `expected_richness` sums the suitabilities instead. The
-#' `species` table lists every modelled species at each point, most suitable
-#' first, which is the expected species list read straight off the suitability
-#' surface.
+#' towards `richness` where its ensemble suitability is above its threshold:
+#' the one it was fitted with by default, or the p10 or TSS cutoff chosen by
+#' `threshold`. The `species` table lists every modelled species at each
+#' point, most suitable first, which is the expected species list read
+#' straight off the suitability surface.
+#'
+#' `expected_richness`, the sum of the suitabilities, is deprecated and will
+#' be removed: suitabilities are not calibrated probabilities, so their sum is
+#' not a richness estimate. For a band of plausible richness, compare
+#' `threshold = "p10"` with `threshold = "tss"`.
 #'
 #' A point outside a species' study extent is outside anything its model can
 #' speak to, so that species has `NA` suitability there and is not counted.
@@ -348,8 +365,13 @@ richness_grid <- function(series, times = NULL, drop_na = TRUE) {
 #' @param lon,lat Coordinates in decimal degrees, recycled to a common length.
 #' @param time Year(s) CE, and/or `"present"`.
 #' @param climate The climate source the models were fitted with.
+#' @param threshold Which cutoff sets presence: `NULL` (the default) uses each
+#'   model's fitted threshold (p10 unless fitted otherwise); `"p10"` or `"tss"`
+#'   picks that cutoff from the model's stored `cutoffs`. Models saved before
+#'   cutoffs were stored need [refresh_thresholds()] first for `"tss"`.
 #' @return A `richcast_point` with two tibbles: `richness` (one row per point
-#'   per time) and `species` (one row per point, time and species).
+#'   per time) and `species` (one row per point, time and species, with the
+#'   `threshold` applied).
 #' @seealso [run_hindcast_series()]
 #' @examples
 #' \dontrun{
@@ -357,10 +379,14 @@ richness_grid <- function(series, times = NULL, drop_na = TRUE) {
 #'                   climate = clim)
 #' pt$richness
 #' subset(pt$species, present)
+#' lenient <- richness_at(res, lon = 35.5, lat = 33, time = c("present", 850),
+#'                        climate = clim, threshold = "tss")
 #' }
 #' @export
-richness_at <- function(x, lon, lat, time = "present", climate) {
+richness_at <- function(x, lon, lat, time = "present", climate,
+                        threshold = NULL) {
   fits <- as_fits(x)
+  cuts <- fit_cutoffs(fits, threshold)
   if (!is.numeric(lon) || !is.numeric(lat) || length(lon) == 0 || length(lat) == 0) {
     rc_abort("{.arg lon} and {.arg lat} must be numeric.")
   }
@@ -394,10 +420,11 @@ richness_at <- function(x, lon, lat, time = "present", climate) {
       ok <- inside & stats::complete.cases(d)
       suit <- rep(NA_real_, n)
       if (any(ok)) suit[ok] <- predict_members(f$members, d[ok, , drop = FALSE])[, "ensemble"]
+      cut <- cuts[[f$species]]
       sp_rows[[length(sp_rows) + 1L]] <- tibble::tibble(
         lon = lon, lat = lat, time = tt,
-        species = f$species, suitability = suit, threshold = f$threshold,
-        present = !is.na(suit) & suit > f$threshold
+        species = f$species, suitability = suit, threshold = cut,
+        present = !is.na(suit) & suit > cut
       )
     }
   }
@@ -430,8 +457,9 @@ richness_at <- function(x, lon, lat, time = "present", climate) {
 #' **present** in the area when its ensemble suitability clears its threshold
 #' in at least one of those cells, and its `suitability` is the highest value
 #' among them, so the two agree: present exactly when `suitability >
-#' threshold`. `richness` counts the species present; `expected_richness`
-#' sums their suitabilities. Cells without climate (sea, or ice) are skipped,
+#' threshold`. `richness` counts the species present. `expected_richness`
+#' sums their suitabilities and is deprecated, as in [richness_at()]. Cells
+#' without climate (sea, or ice) are skipped,
 #' so an area on a coast can hold fewer cells in some slices than others --
 #' `cells` records how many were evaluated.
 #'
@@ -440,6 +468,8 @@ richness_at <- function(x, lon, lat, time = "present", climate) {
 #' @param area The focus area, a [region()] box.
 #' @param time Year(s) CE, and/or `"present"`.
 #' @param climate The climate source the models were fitted with.
+#' @param threshold Which cutoff sets presence: `NULL` for each model's fitted
+#'   threshold, or `"p10"` or `"tss"`. See [richness_at()].
 #' @return A `richcast_area` with two tibbles: `richness` (one row per time)
 #'   and `species` (one row per time and species, with `suitability`,
 #'   `threshold`, `present` and `cells_present`).
@@ -449,13 +479,15 @@ richness_at <- function(x, lon, lat, time = "present", climate) {
 #' focus <- region(c(34.5, 35.5, 31.5, 32.5), label = "focus area")
 #' fa <- richness_in(res, focus, time = c("present", -4050), climate = clim)
 #' fa$richness
+#' fa_tss <- richness_in(res, focus, time = c("present", -4050), climate = clim,
+#'                       threshold = "tss")
 #' }
 #' @export
-richness_in <- function(x, area, time = "present", climate) {
+richness_in <- function(x, area, time = "present", climate, threshold = NULL) {
   sp_rows <- list()
   area_rows <- list()
   for (tt in as.character(time)) {
-    g <- suitability_grid(x, area, tt, climate)
+    g <- suitability_grid(x, area, tt, climate, threshold)
     area_rows[[tt]] <- tibble::tibble(time = tt, cells = attr(g, "cells"))
     sp_rows[[tt]] <- g |>
       dplyr::group_by(.data$species, .data$threshold) |>
@@ -499,13 +531,14 @@ richness_in <- function(x, area, time = "present", climate) {
 #'
 #' @inheritParams richness_in
 #' @param time A single year CE, or `"present"`.
-#' @return A tibble with `x`, `y`, `species`, `suitability` and `threshold`,
-#'   one row per cell and fitted species. The number of cells with climate is
+#' @return A tibble with `x`, `y`, `species`, `suitability` and `threshold`
+#'   (the cutoff chosen by `threshold`), one row per cell and fitted species. The number of cells with climate is
 #'   attached as the `cells` attribute.
 #' @seealso [richness_in()], [presence_thresholds()]
 #' @export
-suitability_grid <- function(x, area, time, climate) {
+suitability_grid <- function(x, area, time, climate, threshold = NULL) {
   fits <- as_fits(x)
+  cuts <- fit_cutoffs(fits, threshold)
   check_region(area, arg = "area")
   if (length(time) != 1) rc_abort("{.arg time} must be a single slice.")
   vars <- unique(unlist(lapply(fits, function(f) f$predictors)))
@@ -532,7 +565,7 @@ suitability_grid <- function(x, area, time, climate) {
       suit[ok] <- predict_members(f$members, d[ok, , drop = FALSE])[, "ensemble"]
     }
     tibble::tibble(x = xy[, 1], y = xy[, 2], species = f$species,
-                   suitability = suit, threshold = f$threshold)
+                   suitability = suit, threshold = cuts[[f$species]])
   })
   out <- dplyr::bind_rows(rows)
   attr(out, "cells") <- sum(has_climate)
@@ -554,27 +587,108 @@ suitability_grid <- function(x, area, time, climate) {
 #' * `tss`: the cutoff that maximises the true skill statistic (sensitivity +
 #'   specificity - 1) when cells inside the range polygon are treated as
 #'   presences and the rest of the study extent as absences. It depends on how
-#'   wide the study extent is, and can fall above or below p10.
+#'   wide the study extent is, and can fall above or below p10. It is the
+#'   cutoff that `threshold = "tss"` applies in [richness_at()] and
+#'   [richness_in()].
 #'
 #' @param x A `richcast_series`, a single `richcast_sdm`, or a list of them.
 #' @param db The `richcast_db` the models were fitted from.
-#' @return A tibble with `species`, `threshold` (the fitted p10 threshold),
-#'   `min_presence` and `tss`.
+#' @return A tibble with `species`, `threshold` (the fitted threshold, p10
+#'   unless fitted otherwise), `min_presence` and `tss`.
 #' @seealso [suitability_grid()]
 #' @export
 presence_thresholds <- function(x, db) {
   fits <- as_fits(x)
   dplyr::bind_rows(lapply(fits, function(f) {
-    row <- db_row(db, f$species)
-    poly <- terra::makeValid(terra::vect(sf::st_sf(geometry = sf::st_geometry(row))))
+    poly <- range_vect(db, f$species)
     suit <- suitability(f)
     pres <- terra::values(terra::mask(suit, poly), mat = FALSE, na.rm = TRUE)
-    abs <- terra::values(terra::mask(suit, poly, inverse = TRUE), mat = FALSE,
-                         na.rm = TRUE)
     tibble::tibble(species = f$species, threshold = f$threshold,
                    min_presence = if (length(pres)) min(pres) else NA_real_,
-                   tss = tss_cutoff(pres, abs))
+                   tss = f$cutoffs[["tss"]] %||% range_tss(suit, poly))
   }))
+}
+
+#' Store p10 and TSS cutoffs on models fitted by an older richcast
+#'
+#' Models from [fit_sdm()] carry both cutoffs in `cutoffs`, which is what lets
+#' [richness_at()] and [richness_in()] switch with `threshold`. Models saved
+#' before that lack them; this computes the TSS cutoff from each model's
+#' present-day surface and range polygon, exactly as [presence_thresholds()]
+#' does, and records the p10 cutoff where the model was fitted with it.
+#' Nothing is refitted, and the richness surfaces of a series are unchanged.
+#'
+#' @param x A `richcast_series`, a single `richcast_sdm`, or a list of them.
+#' @param db The `richcast_db` the models were fitted from.
+#' @return `x`, with `cutoffs` set on every model.
+#' @examples
+#' \dontrun{
+#' res <- refresh_thresholds(readRDS("levant_run.rds"), db)
+#' richness_at(res, 35.5, 33, climate = clim, threshold = "tss")
+#' }
+#' @export
+refresh_thresholds <- function(x, db) {
+  refresh <- function(f) {
+    if (!is.null(f$cutoffs)) return(f)
+    f$cutoffs <- c(
+      p10 = if (identical(f$threshold_rule, "p10")) f$threshold else NA_real_,
+      tss = range_tss(suitability(f), range_vect(db, f$species))
+    )
+    f
+  }
+  if (inherits(x, "richcast_series")) {
+    x$fits[] <- lapply(x$fits, refresh)
+  } else if (inherits(x, "richcast_sdm")) {
+    x <- refresh(x)
+  } else {
+    x[] <- lapply(as_fits(x), refresh)
+  }
+  x
+}
+
+#' One species' range polygon as a valid SpatVector
+#' @noRd
+range_vect <- function(db, species) {
+  row <- db_row(db, species)
+  terra::makeValid(terra::vect(sf::st_sf(geometry = sf::st_geometry(row))))
+}
+
+#' Each model's presence cutoff under a threshold rule, named by species
+#'
+#' `NULL` keeps the threshold each model was fitted with.
+#' @noRd
+fit_cutoffs <- function(fits, threshold) {
+  species <- vapply(fits, function(f) f$species, character(1))
+  if (is.null(threshold)) {
+    return(stats::setNames(vapply(fits, function(f) f$threshold, numeric(1)),
+                           species))
+  }
+  threshold <- rlang::arg_match0(threshold, c("p10", "tss"))
+  cuts <- vapply(fits, function(f) {
+    if (!is.null(f$cutoffs)) return(unname(f$cutoffs[threshold]))
+    # Older models: the fitted threshold is the p10 cutoff if fitted with p10.
+    if (threshold == "p10" && identical(f$threshold_rule, "p10")) f$threshold else NA_real_
+  }, numeric(1))
+  if (anyNA(cuts)) {
+    rc_abort(c(
+      "No {.val {threshold}} cutoff stored for {.val {species[is.na(cuts)]}}.",
+      "i" = "Models saved by an older richcast need {.code refresh_thresholds(x, db)} first."
+    ))
+  }
+  stats::setNames(cuts, species)
+}
+
+#' Warn that the summed-suitability ("expected") output is deprecated
+#' @noRd
+warn_expected_deprecated <- function(what) {
+  cli::cli_warn(
+    c(
+      "{.code {what}} is deprecated and will be removed.",
+      "x" = "Suitabilities are not calibrated probabilities of presence, so their sum is not a richness estimate.",
+      "i" = "Use the thresholded {.field richness}, comparing {.code threshold = \"p10\"} with {.code threshold = \"tss\"} in {.fn richness_at} or {.fn richness_in}."
+    ),
+    class = c("richcast_deprecated", "deprecatedWarning")
+  )
 }
 
 #' The cutoff maximising sensitivity + specificity - 1
@@ -595,7 +709,7 @@ print.richcast_area <- function(x, ...) {
   for (i in seq_len(nrow(r))) {
     sp <- x$species$species[x$species$present & x$species$time == r$time[i]]
     cli::cli_text(
-      "  {r$time[i]}: richness {r$richness[i]}, expected {round(r$expected_richness[i], 2)} ({r$cells[i]} cell{?s})"
+      "  {r$time[i]}: richness {r$richness[i]} ({r$cells[i]} cell{?s})"
     )
     if (length(sp)) cli::cli_text("    {.emph {sp}}")
   }
@@ -658,7 +772,7 @@ print.richcast_point <- function(x, ...) {
                               x$species$lat == r$lat[i] &
                               x$species$time == r$time[i]]
     cli::cli_text(
-      "  ({r$lon[i]}, {r$lat[i]}) @ {r$time[i]}: richness {r$richness[i]}, expected {round(r$expected_richness[i], 2)}"
+      "  ({r$lon[i]}, {r$lat[i]}) @ {r$time[i]}: richness {r$richness[i]}"
     )
     if (length(sp)) cli::cli_text("    {.emph {sp}}")
   }
