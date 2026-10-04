@@ -12,9 +12,9 @@ vignette: >
 A complete analysis with the full pipeline: every bovid, cervid, equid and
 wild boar on the Middle East's Pleistocene zooarchaeological list, modelled
 against Beyer et al. (2020) palaeoclimate and hindcast across all 71 of its
-slices back to 120 ka BP. Richness is read over the whole region and over a
-focus area on the Mediterranean part of Israel, and compared with dated
-archaeological site density in the Levantine corridor.
+slices back to 120 ka BP. Richness is read over the whole region and over the
+Levantine corridor (34-37.5 E, 29.5-37 N), where it is compared with dated
+archaeological site density.
 
 **This vignette is precomputed.** It needs IUCN Red List range polygons,
 which cannot be redistributed, and about 160 MB of prepared climate slices.
@@ -347,12 +347,12 @@ taxon_of <- unlist(lapply(names(res$taxa), \(t) setNames(rep(t, length(res$taxa[
 thr <- thr |> mutate(taxon = taxon_of[species])
 ```
 
-Cell-level suitability for every fitted species, for the region and the
-focus area, is computed once per slice and saved next to the run.
+Cell-level suitability for every fitted species over the region is computed
+once per slice and saved next to the run. Every sub-area below, such as the
+Levantine corridor, is read from this region table.
 
 
 ``` r
-focus <- region(c(34.5, 35.5, 31.5, 32.5), label = "focus area")
 slice_keys <- c("present", as.character(times_ce))
 to_ka <- function(t) ifelse(t == "present", 0, -ce_to_bp(suppressWarnings(as.numeric(t))) / 1000)
 
@@ -378,9 +378,7 @@ if (file.exists(cells_file)) {
 } else {
   cell_tbl <- lapply(slice_keys, function(k) {
     reg <- suitability_grid(res, me, k, clim)
-    foc <- suitability_grid(res, focus, k, clim)
-    list(region = by_taxon(reg), region_cells = attr(reg, "cells"),
-         focus = by_taxon(foc))
+    list(region = by_taxon(reg), region_cells = attr(reg, "cells"))
   })
   names(cell_tbl) <- slice_keys
   saveRDS(cell_tbl, cells_file)
@@ -571,94 +569,93 @@ ggplot(grid) +
 
 ![plot of chunk maps](middle-east-maps-1.png)
 
-## The focus area
+## The Levantine corridor
 
-A single 0.5-degree cell is too small a unit to read an assemblage from, so
-the focus area is the 2 x 2 block of cells centred on the Mediterranean part
-of Israel (35.0 E, 32.0 N): 34.5-35.5 E by 31.5-32.5 N, covering the coastal
-plain from the Sharon to the southern coast, the Shephelah and the western
-flanks of the Samarian and Judean hills. At today's sea level its
-north-western cell is sea; in the glacial slices, with the coast further
-west, all four cells are land.
-
-
-``` r
-focus
-```
-
-A taxon is present in the focus area when any member clears its threshold in
-at least one of the cells. Its suitability is that of the member and cell
-furthest above p10.
+The corridor runs from the Negev and the head of the Gulf of Aqaba north to
+Hatay: 34.0-37.5 E by 29.5-37.0 N, 75-78 land cells depending on sea level.
+Its richness is the mean number of taxa per land cell, at each threshold, read
+from the region's cell table. Counting a taxon wherever it clears its
+threshold in any one cell does not work at this size: over about 77 cells
+nearly every taxon turns up somewhere, so that count saturates.
 
 
 ``` r
-fa_species <- bind_rows(lapply(slice_keys, function(k) {
-  cell_tbl[[k]]$focus |>
+corridor <- c(34.0, 37.5, 29.5, 37.0)
+in_corridor <- function(d) {
+  filter(d, x > corridor[1], x < corridor[2], y > corridor[3], y < corridor[4])
+}
+corridor_richness <- function(cells) {
+  bind_rows(lapply(names(cells), function(k) {
+    in_corridor(cells[[k]]$region) |>
+      group_by(x, y) |>
+      summarise(strict = sum(strict), lenient = sum(lenient), .groups = "drop") |>
+      summarise(cells = n(), strict = mean(strict), lenient = mean(lenient)) |>
+      mutate(ka_bp = to_ka(k))
+  }))
+}
+corr_rich <- corridor_richness(cell_tbl)
+corr_share <- bind_rows(lapply(slice_keys, function(k) {
+  d <- in_corridor(cell_tbl[[k]]$region)
+  n <- nrow(distinct(d, x, y))
+  d |>
     group_by(taxon) |>
-    summarise(strict = any(strict), lenient = any(lenient),
-              i = which.max(suit - p10), suitability = suit[i],
-              p10 = p10[i], tss = tss[i], .groups = "drop") |>
-    select(-i) |>
-    mutate(time = k, ka_bp = to_ka(k))
+    summarise(p10 = sum(strict) / n, tss = sum(lenient) / n, .groups = "drop") |>
+    mutate(ka_bp = to_ka(k))
 }))
-
-fa_rich <- fa_species |>
-  group_by(time, ka_bp) |>
-  summarise(strict = sum(strict), lenient = sum(lenient),
-            strict_taxa = paste(gsub("_", " ", taxon[strict]), collapse = ", "),
-            marginal_taxa = paste(gsub("_", " ", taxon[lenient & !strict]), collapse = ", "),
-            .groups = "drop") |>
-  arrange(ka_bp)
-
-fa_rich |>
-  select(ka_bp, strict, lenient, present = strict_taxa,
-         marginal = marginal_taxa)
-#> # A tibble: 72 × 5
-#>    ka_bp strict lenient present        marginal
-#>    <dbl>  <int>   <int> <chr>          <chr>   
-#>  1     0      3       6 Cervus elaphus ""      
-#>  2     1      3       6 Cervus elaphus ""      
-#>  3     2      3       5 Cervus elaphus ""      
-#>  4     3      3       6 Cervus elaphus ""      
-#>  5     4      3       6 Cervus elaphus ""      
-#>  6     5      3       5 Cervus elaphus ""      
-#>  7     6      3       5 Cervus elaphus ""      
-#>  8     7      3       5 Cervus elaphus ""      
-#>  9     8      3       5 Cervus elaphus ""      
-#> 10     9      4       4 Dama sp        ""      
-#> # ℹ 62 more rows
+corr_rich |>
+  summarise(cells = paste(range(cells), collapse = "-"),
+            across(c(strict, lenient), list(mean = mean, min = min, max = max))) |>
+  mutate(across(where(is.double), \(x) round(x, 2)))
+#> # A tibble: 1 × 7
+#>   cells strict_mean strict_min strict_max lenient_mean lenient_min lenient_max
+#>   <chr>       <dbl>      <dbl>      <dbl>        <dbl>       <dbl>       <dbl>
+#> 1 75-78         2.3       1.87       2.65         3.63        3.41        3.94
 ```
 
-Top panel: taxa present in the focus area, as a band between the strict and
-lenient counts, each divided by its own median across slices and smoothed
-with a Gaussian kernel (solid: strict, dashed: lenient).
-Below, each taxon's ensemble suitability; the red band runs from its TSS
-threshold (lenient) up to its p10 threshold (strict). Above the band the
-taxon is present, inside it marginal, below it absent.
+Top: mean taxa per land cell at the p10 (solid) and TSS (dashed) thresholds.
+Below: the share of the corridor's land cells each taxon occupies, the line
+at p10 and the band reaching up to TSS. The blue band marks the Last Glacial
+Maximum (17-27 ka).
 
 
 ``` r
-panel_plot(
-  top   = fa_rich |> relative_richness(),
-  taxa  = fa_species |> transmute(ka_bp, value = suitability, lo = tss, hi = p10,
-                                  panel = gsub("_", " ", taxon)),
-  top_label = "Relative richness",
-  ylab  = "Relative richness (top) / ensemble suitability",
-  title = "Focus area: Mediterranean Israel, 2 x 2 cells",
-  band_fill = "firebrick",
-  caption = "Top: strict (p10) and lenient (TSS) richness, each divided by its own median.\nTaxon bands: TSS to p10 threshold."
-)
+lgm <- annotate("rect", xmin = 17, xmax = 27, ymin = -Inf, ymax = Inf,
+                fill = "#2166ac", alpha = 0.12)
+p_cr <- corr_rich |>
+  pivot_longer(c(strict, lenient), names_to = "rule", values_to = "taxa") |>
+  mutate(rule = factor(rule, c("strict", "lenient"), c("p10", "TSS"))) |>
+  ggplot(aes(ka_bp, taxa, linetype = rule)) +
+  lgm +
+  geom_step(direction = "mid", colour = "#c2410c", linewidth = 0.6) +
+  scale_x_reverse(breaks = seq(0, 120, 20)) +
+  scale_linetype_manual(values = c(p10 = "solid", TSS = "dashed"), name = "Threshold") +
+  labs(x = NULL, y = "Taxa per land cell",
+       title = "Levantine corridor, 34-37.5 E, 29.5-37 N") +
+  theme_minimal(base_size = 10) +
+  theme(legend.position = "top", legend.justification = "left")
+p_cs <- corr_share |>
+  mutate(taxon = gsub("_", " ", taxon)) |>
+  group_by(taxon) |> mutate(ord = mean(tss)) |> ungroup() |>
+  mutate(taxon = reorder(taxon, -ord)) |>
+  ggplot(aes(ka_bp)) +
+  lgm +
+  geom_ribbon(aes(ymin = p10, ymax = tss), fill = "grey60", alpha = 0.45) +
+  geom_step(aes(y = p10), direction = "mid", linewidth = 0.4) +
+  facet_wrap(~taxon, ncol = 3, scales = "free_y") +
+  scale_x_reverse(breaks = seq(0, 120, 40)) +
+  labs(x = "ka BP", y = "Share of corridor land cells occupied") +
+  theme_minimal(base_size = 10) +
+  theme(strip.text = element_text(face = "italic", hjust = 0))
+patchwork::wrap_plots(p_cr, p_cs, ncol = 1, heights = c(1, 2.4))
 ```
 
-![plot of chunk focus-panels](middle-east-focus-panels-1.png)
+![plot of chunk corridor-plot](middle-east-corridor-plot-1.png)
 
 ## Archaeological site density in the Levantine corridor
 
 Does modelled ungulate richness track how intensively people used the
-landscape? This section compares richness over the whole Levantine corridor,
-34.0-37.5 E by 29.5-37.0 N (the Negev and the head of the Gulf of Aqaba north
-to Hatay), with a time series of dated archaeological site-phases from the
-same box.
+landscape? This section compares corridor richness at the p10 threshold with a
+time series of dated archaeological site-phases from the same box.
 
 ### The site series
 
@@ -666,18 +663,20 @@ The series ships with richcast as `levant_site_series.csv` in `extdata`. It is
 an aggregate, one row per richcast slice; no individual dates are included.
 It was built outside the package, by a separate Python pipeline:
 
-* **Dates.** Radiocarbon dates from NERD (Palmisano et al. 2022) and p3k14c
-  (Bird et al. 2022), restricted to the Middle East, with flagged dates and
-  duplicates dropped. Absolute dates from ROAD (Kandel et al. 2023, via
-  roadDB): radiocarbon, OSL, TL, ESR, U-series and others. Radiocarbon dates
-  already in ROAD were dropped from the other two sources. Only sites inside
-  the corridor box were kept.
+* **Dates.** Radiocarbon dates from p3k14c (Bird et al. 2022), restricted to
+  the Middle East, with flagged dates and duplicates dropped. Absolute dates
+  from ROAD (Kandel et al. 2023, via roadDB): radiocarbon, OSL, TL, ESR,
+  U-series and others. Radiocarbon dates already in ROAD were dropped from
+  p3k14c. Only sites inside the corridor box were kept. NERD (Palmisano et al.
+  2022) is left out: it covers only 15-1.5 ka, so it would add 25-50% more
+  phases exactly where the curve rises (17-12 ka) and make the 14C coverage
+  uneven across the tested window.
 * **Calibration.** Radiocarbon dates were calibrated with IntCal20 (Reimer
   et al. 2020); other methods were taken as normal distributions with their
   reported 1-sigma error.
 * **Site-phases.** Dates were grouped into site-phases: one per dated layer
   for ROAD, and bins of 200 years (`rcarbon::binPrep`, `h = 200`) for the
-  radiocarbon databases. Each phase's mean age distribution was integrated
+  radiocarbon dates. Each phase's mean age distribution was integrated
   over each slice's window (half-way to the neighbouring slices) and summed
   over phases. That gives the expected number of phases per slice
   (`levant_phases`), and per ka once divided by the window width
@@ -691,11 +690,14 @@ It was built outside the package, by a separate Python pipeline:
 Before 48 ka, beyond radiocarbon, only ROAD's other dating methods
 contribute, so the series there is sparse and coarse.
 
+Without NERD the Holocene is thinly covered (ROAD ends near 20 ka, and
+p3k14c is sparse for the late Holocene Levant), so 0-12 ka is shown for
+context but not tested.
+
 **Licence and attribution.** `levant_site_series.csv` is derived from ROAD
-(CC BY-SA 4.0), NERD (CC BY 4.0) and p3k14c (data CC0, attribution
-requested), and is distributed under **CC BY-SA 4.0**. If you use it, cite
-Kandel et al. (2023), Palmisano et al. (2022), Bird et al. (2022), Reimer
-et al. (2020) and Surovell et al. (2009).
+(CC BY-SA 4.0) and p3k14c (data CC0, attribution requested), and is
+distributed under **CC BY-SA 4.0**. If you use it, cite Kandel et al. (2023),
+Bird et al. (2022), Reimer et al. (2020) and Surovell et al. (2009).
 
 
 ``` r
@@ -704,46 +706,30 @@ sites <- read.csv(system.file("extdata", "levant_site_series.csv",
 head(sites)
 #>   ka_bp levant_phases levant_per_ka levant_per_ka_taph levant_per_ka_q05
 #> 1     0        2.4418        4.8836             5.6820                 4
-#> 2     1       10.8984       10.8984            18.4504                 8
-#> 3     2       60.1185       60.1185           148.9958                56
-#> 4     3      120.1683      120.1683           401.5803               115
-#> 5     4       87.3072       87.3072           373.1196                82
-#> 6     5      101.5425      101.5425           534.8064                95
+#> 2     1        1.5580        1.5580             2.6377                 1
+#> 3     2        1.3700        1.3700             3.3953                 1
+#> 4     3       17.5691       17.5691            58.7128                16
+#> 5     4       15.7250       15.7250            67.2030                13
+#> 6     5       31.2472       31.2472           164.5737                28
 #>   levant_per_ka_q95
-#> 1                 6
-#> 2                14
-#> 3                65
-#> 4               125
-#> 5                93
-#> 6               108
+#> 1              6.00
+#> 2              2.00
+#> 3              2.05
+#> 4             19.00
+#> 5             18.00
+#> 6             35.00
 ```
 
 ### Richness in the corridor
 
-Richness is the mean number of taxa above their p10 threshold per land cell
-in the box, read from the region's cell table. This is not the any-cell count
-used for the focus area: over about 77 cells nearly every taxon turns up
-somewhere, so that count saturates.
-
-The comparison is also drawn for the fossil-calibrated run, where red deer
-and roe deer also train on dated ROAD occurrences (see "Fossil presences" in
-`?fit_sdm`), when that run has been saved next to this one. The fossil table
-itself is not distributed.
+The comparison uses p10 richness from the corridor section above. It is also
+drawn for the fossil-calibrated run, where red deer and roe deer also train on
+dated ROAD occurrences (see "Fossil presences" in `?fit_sdm`), when that run
+has been saved next to this one. The fossil table itself is not distributed.
 
 
 ``` r
-corridor <- c(34.0, 37.5, 29.5, 37.0)
-corridor_richness <- function(cells) {
-  bind_rows(lapply(names(cells), function(k) {
-    cells[[k]]$region |>
-      filter(x > corridor[1], x < corridor[2], y > corridor[3], y < corridor[4]) |>
-      group_by(x, y) |>
-      summarise(strict = sum(strict), .groups = "drop") |>
-      summarise(cells = n(), richness = mean(strict)) |>
-      mutate(ka_bp = to_ka(k))
-  }))
-}
-corr <- corridor_richness(cell_tbl) |> mutate(run = "original")
+corr <- corr_rich |> transmute(ka_bp, cells, richness = strict, run = "original")
 
 # The fossil-calibrated run, if it has been saved alongside this one: same
 # species and merges, plus the deer fossil table and 100 draws.
@@ -754,7 +740,8 @@ if (file.exists(fossil_csv)) {
   f_cells <- file.path("runs", paste0("res_", rlang::hash(key), "_cells.rds"))
   if (file.exists(f_cells)) {
     corr <- bind_rows(corr, corridor_richness(readRDS(f_cells)) |>
-                        mutate(run = "fossil-calibrated deer"))
+                        transmute(ka_bp, cells, richness = strict,
+                                  run = "fossil-calibrated deer"))
   }
 }
 corr <- corr |> mutate(run = factor(run, c("original", "fossil-calibrated deer")))
@@ -780,7 +767,10 @@ one. This keeps each series' own autocorrelation and asks only whether the
 two line up better than at a random offset. When no lag does as well, p is
 reported as below 1/(n - 1). The Spearman correlation of first differences
 (slice-to-slice changes) asks whether the two also move together step by
-step, or only share a slow trend.
+step, or only share a slow trend. The accompanying paper tests the same
+comparison against IAAFT surrogates, on 1 and 2 ka slices, with and without
+NERD and the taphonomic correction, and at both thresholds; those results are
+in its supplementary tables.
 
 
 ``` r
@@ -812,16 +802,16 @@ tests |>
 #> # A tibble: 10 × 6
 #>    run                    window_ka     n rho   p_shift diff_rho
 #>    <chr>                  <chr>     <int> <chr> <chr>   <chr>   
-#>  1 original               0-12         13 0.49  0.42    0.20    
-#>  2 fossil-calibrated deer 0-12         13 0.64  0.33    0.34    
-#>  3 original               12-48        24 0.64  < 0.043 0.00    
-#>  4 fossil-calibrated deer 12-48        24 0.63  < 0.043 0.03    
+#>  1 original               0-12         13 0.59  0.42    0.13    
+#>  2 fossil-calibrated deer 0-12         13 0.64  0.33    0.10    
+#>  3 original               12-48        24 0.47  < 0.043 -0.14   
+#>  4 fossil-calibrated deer 12-48        24 0.43  0.13    -0.12   
 #>  5 original               48-120       37 0.24  0.47    0.04    
 #>  6 fossil-calibrated deer 48-120       37 0.24  0.42    -0.01   
-#>  7 original               12-120       60 0.18  0.19    0.00    
-#>  8 fossil-calibrated deer 12-120       60 0.29  < 0.017 -0.02   
-#>  9 original               0-120        72 0.19  0.31    0.05    
-#> 10 fossil-calibrated deer 0-120        72 0.18  0.44    0.07
+#>  7 original               12-120       60 0.15  0.20    -0.03   
+#>  8 fossil-calibrated deer 12-120       60 0.26  < 0.017 -0.05   
+#>  9 original               0-120        72 0.23  0.18    -0.04   
+#> 10 fossil-calibrated deer 0-120        72 0.30  0.27    -0.07
 ```
 
 The full 120 ka series first: corridor richness for both runs, and the site
@@ -829,9 +819,10 @@ curve with its uncertainty.
 
 
 ``` r
-shade <- tibble(xmin = c(12, 48), xmax = c(48, 120),
-                label = c("tested window", "beyond radiocarbon:\nROAD non-14C dates only"),
-                fill = c("#0072B2", "grey50"))
+shade <- tibble(xmin = c(12, 48, 0), xmax = c(48, 120, 12),
+                label = c("tested window", "beyond radiocarbon:\nROAD non-14C dates only",
+                          "not\ntested"),
+                fill = c("#0072B2", "grey50", "grey20"))
 run_cols <- c("original" = "grey20", "fossil-calibrated deer" = "#1f6f8b")
 
 p_rich <- ggplot(corr, aes(ka_bp, richness, colour = run)) +
@@ -867,50 +858,59 @@ patchwork::wrap_plots(p_rich, p_sites, ncol = 1, heights = c(1, 1.3))
 
 ![plot of chunk site-plot](middle-east-site-plot-1.png)
 
-Then the comparison itself, for the run with fossil-calibrated deer (the
-original run when that one is not available). Left: the two series from 48
-to 2 ka on one axis, each as a z-score over those slices; 0 and 1 ka are left
-out, as the radiocarbon databases under-count recent sites. Right: the
-circular-shift test drawn out, the 12-48 ka correlation at the real alignment
-(orange) and with richness rolled by each of the other 23 slices (grey).
+Then the comparison itself, for the original run, with the fossil-calibrated
+run as a secondary line when it is available. Left: the series from 48 to 10
+ka on one axis, each as a z-score over the 48-12 ka test window. Right: the
+circular-shift test drawn out for the original run, the 12-48 ka correlation
+at the real alignment (orange) and with richness rolled by each of the other
+23 slices (grey).
 
 
 ``` r
-main_run <- if ("fossil-calibrated deer" %in% joined$run) "fossil-calibrated deer" else "original"
+main_run <- "original"
+second_run <- "fossil-calibrated deer"
+win <- joined |> filter(ka_bp >= 12, ka_bp <= 48)
+z_of <- function(v, ref) (v - mean(ref)) / sd(ref)
 
-series_names <- c(sites = "Site-phases per ka (log10, taphonomy-corrected)",
-                  rich  = paste0("Richness per cell (", main_run, ")"))
+site_w <- win |> filter(run == main_run)
 ov <- joined |>
-  filter(run == main_run, ka_bp >= 2, ka_bp <= 48) |>
-  arrange(ka_bp) |>
-  transmute(ka_bp,
-            sites = as.numeric(scale(log10(levant_per_ka_taph))),
-            rich  = as.numeric(scale(richness))) |>
-  pivot_longer(c(sites, rich), names_to = "series", values_to = "z") |>
-  mutate(series = factor(series_names[series], series_names))
-ov_cols <- setNames(c("#1d4ed8", "#c2410c"), series_names)
-bands <- tibble(xmin = c(1.5, 11.5, 16.5), xmax = c(11.5, 16.5, 26.5),
-                label = c("Holocene\n(not tested)", "Late\nGlacial", "LGM"),
-                fill = c("grey60", "#92c5de", "#2166ac"))
-z_lim <- range(ov$z) + c(-0.2, 0.9)
+  filter(run == main_run, ka_bp >= 10, ka_bp <= 48) |>
+  transmute(ka_bp, value = z_of(log10(levant_per_ka_taph), log10(site_w$levant_per_ka_taph)),
+            series = "Site-phases per ka (log10, taphonomy-corrected)")
+for (r in intersect(c(main_run, second_run), as.character(unique(joined$run)))) {
+  rw <- win |> filter(run == r)
+  ov <- bind_rows(ov, joined |>
+    filter(run == r, ka_bp >= 10, ka_bp <= 48) |>
+    transmute(ka_bp, value = z_of(richness, rw$richness),
+              series = paste0("Richness per cell (", r, ")")))
+}
+lev <- c("Site-phases per ka (log10, taphonomy-corrected)",
+         "Richness per cell (original)", "Richness per cell (fossil-calibrated deer)")
+ov <- ov |> mutate(series = factor(series, intersect(lev, unique(series))))
+ov_cols <- setNames(c("#1d4ed8", "#c2410c", "#f4a582"), lev)
+ov_lt <- setNames(c("solid", "solid", "dashed"), lev)
+bands <- tibble(xmin = c(11.5, 16.5), xmax = c(16.5, 26.5),
+                label = c("Late\nGlacial", "LGM"), fill = c("#92c5de", "#2166ac"))
+z_lim <- range(ov$value) + c(-0.2, 0.9)
 
-p_ov <- ggplot(ov, aes(ka_bp, z, colour = series)) +
+p_ov <- ggplot(ov, aes(ka_bp, value, colour = series, linetype = series)) +
   geom_rect(data = bands, aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf),
             inherit.aes = FALSE, fill = bands$fill, alpha = 0.15) +
   geom_text(data = bands, aes(x = (xmin + xmax) / 2, y = z_lim[2], label = label),
             inherit.aes = FALSE, vjust = 1, size = 2.8, colour = "grey25", lineheight = 0.9) +
   geom_hline(yintercept = 0, colour = "grey80") +
   geom_line(linewidth = 0.7) +
-  geom_point(size = 1.8) +
-  scale_x_reverse(breaks = seq(0, 48, 6)) +
+  geom_point(size = 1.5) +
+  scale_x_reverse(breaks = seq(12, 48, 6)) +
   scale_y_continuous(limits = z_lim) +
   scale_colour_manual(values = ov_cols, name = NULL) +
-  labs(x = "ka BP", y = "z-score (2-48 ka)") +
+  scale_linetype_manual(values = ov_lt, name = NULL) +
+  labs(x = "ka BP", y = "z-score (12-48 ka)") +
   guides(colour = guide_legend(ncol = 1)) +
   theme_minimal(base_size = 10) +
   theme(legend.position = "top")
 
-w <- joined |> filter(run == main_run, ka_bp >= 12, ka_bp <= 48) |> arrange(ka_bp)
+w <- win |> filter(run == main_run) |> arrange(ka_bp)
 n <- nrow(w)
 shift_rho <- tibble(k = 0:(n - 1)) |>
   mutate(rho = vapply(k, function(kk) {
@@ -927,7 +927,7 @@ p_bar <- ggplot(shift_rho, aes(k, rho, fill = real)) +
   scale_x_continuous(breaks = c(0, 5, 10, 15, 20, n - 1)) +
   labs(x = "Shift of richness against the site series (slices, wrapped)",
        y = "Spearman rho, 12-48 ka",
-       title = sprintf("Real rho = %.2f; highest of %d shifts = %.2f",
+       title = sprintf("Original run: real rho = %.2f; highest of %d shifts = %.2f",
                        shift_rho$rho[1], n - 1, best)) +
   theme_minimal(base_size = 10) +
   theme(plot.title = element_text(size = 10))
@@ -937,36 +937,33 @@ patchwork::wrap_plots(p_ov, p_bar, widths = c(1.4, 1))
 
 ![plot of chunk site-overlay](middle-east-site-overlay-1.png)
 
+
+
 ### Reading it
 
-The comparison figure uses the run with fossil-calibrated deer, because it
-matches the zooarchaeological record better. Red deer and roe deer are
-reported from most dated Levantine units in ROAD, but the original models,
-trained on present-day ranges, place them at almost none of them. Across the
-dated ROAD units with deer, the share of each unit's slices that a model
-predicts present rises from 0.02-0.03 in the original run to 0.94-0.97 in the
-fossil-calibrated one.
+From 48 to 12 ka, in the original run, corridor richness at p10 and
+site density are correlated (Spearman rho 0.47,
+circular-shift p below 0.043; first differences
+-0.14). The real alignment beats every shift, but
+only narrowly: shifting richness by one slice gives rho
+0.45 and 0.30, and the highest
+of the 23 shifts is 0.45. So whatever the two share
+is a slow trend, not slice-by-slice coupling. The fossil-calibrated run
+gives rho 0.43 (p 0.13): its deer add a
+nearly constant amount to the corridor, so the ranks barely move. Its red deer
+and roe deer were also trained on dated ROAD occurrences, part of the same
+record the site curve counts, so the original run is the fair test.
 
-From 48 to 12 ka, site density and corridor richness share a dip at the
-Last Glacial Maximum and a rise through the Late Glacial: both are low from
-about 30 to 17 ka and both climb after it. The real alignment beats every
-shifted one, but shifts of one or two slices come close (in the fossil run,
-0.57 against 0.63), and the first differences are uncorrelated. So this is a
-shared slow trend, not slice-by-slice coupling. A common driver such as
-glacial aridity, thinning both game and people, is plausible but is not
-tested here. Beyond 48 ka there is no relation: with radiocarbon out of
-reach, the site series rests on a handful of coarsely dated layers. In the
-Holocene, which is not tested, fossil-calibrated richness falls while the
-number of sites stays high, as farming-era settlement grows regardless of
-the game.
+Beyond 48 ka there is no relation (rho 0.24, p
+0.47): with radiocarbon out of reach, the site series rests on a
+handful of coarsely dated layers. The Holocene is not tested, as the site
+series covers it unevenly.
 
-The fossil-calibrated rows are not independent evidence. Its red deer and
-roe deer were trained on dated ROAD occurrences, part of the same
-archaeological record that the site curve counts. A correlation found only
-in that run, notably 12-120 ka (p below 0.017, against 0.19 in the original
-run), may partly reflect the shared data. The original run, trained on
-present-day ranges alone, gives the same 12-48 ka result (rho 0.64, no shift
-as high) and is the fair test of it.
+The correlation also depends on the presence threshold: the corridor
+section shows that richness at TSS rises at the LGM where p10 richness falls,
+and the paper's supplementary tables find no association at TSS. Read the p10
+result as one end of the band, not as evidence that people followed prey
+diversity.
 
 ## Caveats
 
@@ -976,9 +973,7 @@ as high) and is the fair test of it.
   mapped range, including any part of it shaped by people rather than
   climate.
 * The species list comes from sites spread across the region; a species on
-  it need not have been recorded in the focus area itself.
-* The focus area is about 95 by 110 km. Presence means suitable in at least
-  one of its cells, so it reads as "within the area", not "throughout it".
+  it need not have been recorded in the corridor itself.
 
 ## References
 
@@ -1007,9 +1002,6 @@ as high) and is the fair test of it.
   https://doi.org/10.1111/ecog.06481
 * Natural Earth (public domain) land outlines, via rnaturalearth: made with
   Natural Earth, naturalearthdata.com.
-* Palmisano, A., Bevan, A., Lawrence, D., & Shennan, S. (2022). NERD: Near
-  East Radiocarbon Dates, version 6.0 (23 September 2022).
-  https://github.com/apalmisano82/NERD
 * Palmisano, A., Bevan, A., Lawrence, D., & Shennan, S. (2022). The NERD
   dataset: Near East radiocarbon dates between 15,000 and 1,500 cal. yr. BP.
   *Journal of Open Archaeology Data*, 10, 2. https://doi.org/10.5334/joad.90

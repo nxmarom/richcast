@@ -7,7 +7,7 @@ citHeader(
   "Fick & Hijmans 2017); Ecke et al. (2022) if you used rodent_traits; ",
   "Kandel et al. (2023) if you trained on fossil occurrences from ROAD. ",
   "The bundled levant_site_series table (CC BY-SA 4.0) also needs ",
-  "Palmisano et al. (2022), Bird et al. (2022), Reimer et al. (2020) and ",
+  "Bird et al. (2022), Reimer et al. (2020) and ",
   "Surovell et al. (2009). Land outlines are Natural Earth (public domain; ",
   "\"Made with Natural Earth\" if you credit it)."
 )
@@ -141,30 +141,7 @@ bibentry(
 
 bibentry(
   bibtype  = "Article",
-  header   = "The bundled levant_site_series table draws on NERD:",
-  title    = "The NERD Dataset: Near East Radiocarbon Dates between 15,000 and 1,500 cal. yr. BP",
-  author   = c(person("Alessio", "Palmisano"), person("Andrew", "Bevan"),
-               person("Dan", "Lawrence"), person("Stephen", "Shennan")),
-  journal  = "Journal of Open Archaeology Data",
-  year     = "2022",
-  volume   = "10",
-  pages    = "2",
-  doi      = "10.5334/joad.90"
-)
-
-bibentry(
-  bibtype  = "Misc",
-  header   = "and the NERD dataset itself, as its authors ask:",
-  title    = "NERD: Near East Radiocarbon Dates, version 6.0 (23 September 2022)",
-  author   = c(person("Alessio", "Palmisano"), person("Andrew", "Bevan"),
-               person("Dan", "Lawrence"), person("Stephen", "Shennan")),
-  year     = "2022",
-  url      = "https://github.com/apalmisano82/NERD"
-)
-
-bibentry(
-  bibtype  = "Article",
-  header   = "on p3k14c:",
+  header   = "The bundled levant_site_series table draws on p3k14c:",
   title    = "p3k14c, a synthetic global database of archaeological radiocarbon dates",
   author   = c(person("Darcy", "Bird"), person("Lux", "Miranda"),
                person("Marc", "Vander Linden"), person("Erick", "Robinson"),
