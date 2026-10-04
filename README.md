@@ -168,18 +168,17 @@ probabilities, so their sum is not a richness estimate.
   derived tables under the same licence.
 * **Levantine site series**, the one table that ships
   (`inst/extdata/levant_site_series.csv`, used in the Middle East vignette), is
-  an aggregate of dated site-phases built from ROAD, NERD (Palmisano et al.
-  2022) and p3k14c (Bird et al. 2022), calibrated with IntCal20 (Reimer et al.
-  2020) and corrected after Surovell et al. (2009). It is CC BY-SA 4.0, not
+  an aggregate of dated site-phases built from ROAD and p3k14c (Bird et al.
+  2022), calibrated with IntCal20 (Reimer et al. 2020) and corrected after
+  Surovell et al. (2009). It is CC BY-SA 4.0, not
   MIT; see `inst/extdata/README.md`.
 
 ## Vignettes
 
 * `vignette("richcast")`: the API on synthetic data you can run yourself.
 * `vignette("middle-east")`: the full pipeline on Middle Eastern ungulates,
-  Beyer2020, 120 ka to the present, with a focus area on Mediterranean Israel
-  and a comparison with archaeological site density in the Levantine
-  corridor.
+  Beyer2020, 120 ka to the present, with richness over the Levantine corridor
+  compared with archaeological site density.
   It is precomputed, because its inputs cannot be redistributed;
   `vignettes/precompute.R` re-renders it.
 
@@ -194,9 +193,8 @@ Please cite the package and every data source you used:
 * Ecke et al. (2022) if you used `rodent_traits`;
 * Kandel et al. (2023) and roadDB if you trained on fossil occurrences from
   ROAD;
-* Kandel et al. (2023), Palmisano et al. (2022), Bird et al. (2022), Reimer
-  et al. (2020) and Surovell et al. (2009) if you used the Levantine site
-  series.
+* Kandel et al. (2023), Bird et al. (2022), Reimer et al. (2020) and
+  Surovell et al. (2009) if you used the Levantine site series.
 
 `citation("richcast")` lists them with full references.
 

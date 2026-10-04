@@ -1,5 +1,12 @@
 # richcast (development version)
 
+* `vignette("middle-east")` now reads richness over the Levantine corridor
+  (34-37.5 E, 29.5-37 N) instead of a 2 x 2 focus area on Mediterranean
+  Israel: mean taxa per land cell at p10 and TSS, and each taxon's share of
+  corridor cells. The site comparison uses the original run as its main
+  series, with the fossil-calibrated run alongside. The bundled
+  `levant_site_series.csv` is rebuilt without NERD, which covers only
+  15-1.5 ka and made radiocarbon coverage uneven within the tested window.
 * **Fossil presences**: `fit_sdm()` and `run_hindcast_series()` take an
   optional `fossils` table of dated occurrences, read by the new
   `fossil_presences()` (a `slices` column of `"ka:prob;..."`, or long form
@@ -16,8 +23,8 @@
 * `vignette("middle-east")` has a new section comparing ungulate richness in
   the Levantine corridor with dated archaeological site density, using a
   circular-shift test. The aggregated site series ships as
-  `inst/extdata/levant_site_series.csv` (CC BY-SA 4.0; built from ROAD, NERD
-  and p3k14c, see `inst/extdata/README.md`). Its sources are in
+  `inst/extdata/levant_site_series.csv` (CC BY-SA 4.0; built from ROAD and
+  p3k14c, see `inst/extdata/README.md`). Its sources are in
   `citation("richcast")` and the vignette's new reference list.
 * **TSS threshold switch**: `richness_at()`, `richness_in()` and
   `suitability_grid()` take `threshold = "p10"` or `"tss"` to choose the
