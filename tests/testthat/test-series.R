@@ -353,3 +353,41 @@ test_that("fit_sdm can fit with the TSS cutoff", {
   expect_error(fit_sdm(two_species_db(), "Genus_low", clim, threshold = "mtp"),
                "tss")
 })
+
+test_that("run_hindcast_series passes regmult to every model and records it", {
+  skip_if_not_installed("maxnet")
+  skip_if_not_installed("ranger")
+  dir <- withr::local_tempdir()
+  out <- run_fixture_series(dir, regmult = 3)
+  expect_true(all(vapply(out$res$fits, \(f) f$regmult, numeric(1)) == 3))
+  expect_equal(out$res$models$regmult, rep(3, nrow(out$res$models)))
+  dir2 <- withr::local_tempdir()
+  expect_false("regmult" %in% names(run_fixture_series(dir2)$res$models))
+})
+
+test_that("a supplied merge absorbs its members listed in species", {
+  skip_if_not_installed("maxnet")
+  skip_if_not_installed("ranger")
+  # Members listed as species: replaced by the merged taxon, fitted once each.
+  dir <- withr::local_tempdir()
+  expect_no_warning(out <- run_fixture_series(dir, merge = list(Genus_both = c("Genus_low", "Genus_high"))))
+  expect_equal(out$res$taxa, list(Genus_both = c("Genus_low", "Genus_high")))
+  expect_setequal(out$res$models$species, c("Genus_low", "Genus_high"))
+  expect_equal(nrow(out$res$models), 2L)
+
+  # A merge entry with neither its name nor a member in species is reported.
+  dir2 <- withr::local_tempdir()
+  expect_warning(
+    out2 <- run_fixture_series(dir2, merge = list(Genus_none = c("Genus_absent", "Genus_other"))),
+    "Genus_none")
+  expect_setequal(names(out2$res$taxa), c("Genus_low", "Genus_high"))
+})
+
+test_that("richness surfaces carry no climate metadata", {
+  skip_if_not_installed("maxnet")
+  skip_if_not_installed("ranger")
+  dir <- withr::local_tempdir()
+  s <- richness_surface(run_fixture_series(dir)$res, 850)
+  expect_true(all(is.na(terra::time(s))))
+  expect_false(any(terra::varnames(s) %in% bioclim_vars))
+})

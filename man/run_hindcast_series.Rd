@@ -40,7 +40,11 @@ and the outputs combined: the taxon is present in a cell when any member
 is, and its suitability there is that of the member furthest above its
 own threshold. Modelling the union of the ranges instead lets the larger
 range swamp the smaller one. \code{NULL} (the default) uses the merges the
-region's zooarchaeological list defines.}
+region's zooarchaeological list defines. With a supplied \code{merge}, a
+species listed in \code{species} that is a member of a merged taxon is
+replaced by that taxon, so \code{species} can list species and \code{merge} group
+them; a merged taxon is modelled when its name or any of its members is
+in \code{species}. A supplied merge entry with neither draws a warning.}
 
 \item{fossils}{Optional dated fossil occurrences, in any form
 \code{\link[=fossil_presences]{fossil_presences()}} accepts, added to the training data of the species
@@ -56,7 +60,9 @@ aborts the run.}
 \item{quiet}{Suppress per-species progress.}
 
 \item{...}{Further arguments passed to \code{\link[=fit_sdm]{fit_sdm()}}, e.g. \code{predictors},
-\code{n_presence} or \code{threshold}.}
+\code{n_presence}, \code{threshold}, \code{maxnet_background} or \code{regmult} (MaxEnt's
+regularization multiplier, e.g. \code{regmult = 2} for smoother response
+curves). They apply to every species in the run.}
 }
 \value{
 A \code{richcast_series}:

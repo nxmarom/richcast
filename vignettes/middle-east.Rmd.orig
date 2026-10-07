@@ -241,8 +241,10 @@ bioclim_vars
 
 `run_hindcast_series()` uses the zooarchaeological list by default. Each
 species: study extent of its range's bounding box plus 30% of the
-diagonal, 100 pseudo-presences inside the polygon and 1000 background points,
-a random forest + MaxEnt ensemble, the p10 threshold, and AUC and Boyce on a
+diagonal, 100 pseudo-presences inside the polygon and 1000 pseudo-absences
+outside it, a random forest + MaxEnt ensemble (this run predates MaxEnt's
+whole-extent background, so both members use the pseudo-absences:
+`maxnet_background = "outside"`), the p10 threshold, and AUC and Boyce on a
 25% hold-out. The run's result is saved and reused when this document is
 re-knitted.
 
@@ -254,7 +256,8 @@ if (file.exists(run_file)) {
   res <- readRDS(run_file)
 } else {
   res <- run_hindcast_series(db, clim, times = times_ce, region = me,
-                             species = included, merge = merges, quiet = TRUE)
+                             species = included, merge = merges,
+                             maxnet_background = "outside", quiet = TRUE)
   dir.create("runs", showWarnings = FALSE)
   saveRDS(res, run_file)
 }

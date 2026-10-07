@@ -3,8 +3,9 @@
 #
 # One model per species: an equally weighted ensemble of a random forest
 # (ranger) and MaxEnt (maxnet), trained on pseudo-presences drawn from inside
-# the species' range polygon against background drawn from the rest of its
-# study extent.
+# the species' range polygon. The forest contrasts them with pseudo-absences
+# drawn from the rest of the study extent; MaxEnt, by default, with background
+# drawn from the whole extent (optionally the forest's pseudo-absences).
 #
 # Fitting and projection are separate functions. A model depends only on
 # present-day climate and the species' range, so it is fitted ONCE and then
@@ -46,14 +47,34 @@ bioclim_vars <- c("bio01", "bio04", "bio05", "bio06",
 #' The study extent is the range polygon's bounding box, widened on every side
 #' by `buffer` times its diagonal (30% by default). Inside it, `n_presence`
 #' pseudo-presences are drawn from grid cells inside the range polygon and
-#' `n_background` background points from land cells outside it, both without
+#' `n_background` pseudo-absences from land cells outside it, both without
 #' replacement. A range covering fewer cells than `n_presence` contributes
 #' every cell it has; `range_cells` on the result says how many that was.
 #'
+#' What MaxEnt is contrasted with is set by `maxnet_background`:
+#'
+#' * `"extent"` (the default): background drawn from every land cell of the
+#'   study extent, inside the range polygon too, up to `n_maxnet_background` points without
+#'   replacement (all land cells if there are fewer). This is MaxEnt's own
+#'   presence-versus-availability design. The forest, a classifier, keeps the
+#'   pseudo-absences: background inside the range would carry the absence
+#'   label on the presences' own climate and cap its probabilities there.
+#' * `"outside"`: the same pseudo-absences as the forest, so both members
+#'   learn the range against its surroundings. This was the only design
+#'   before `maxnet_background` was added; use it to reproduce earlier runs.
+#'
+#' maxnet adds the pseudo-presences to its background in either design, so
+#' with `"outside"` its background is the pseudo-absences plus the
+#' pseudo-presences' cells, and `"extent"` differs from it only where the
+#' range holds more cells than `n_presence`.
+#'
 #' # Members and ensemble
 #'
-#' * **MaxEnt**: `maxnet::maxnet()` with default features and `regmult = 1`,
-#'   predicted on the cloglog scale.
+#' * **MaxEnt**: `maxnet::maxnet()` with default features, predicted on the
+#'   cloglog scale. `regmult` scales its regularization (1 by default, as in
+#'   maxnet): higher values give smoother, more general response curves,
+#'   lower values follow the training data more closely and risk overfitting
+#'   (Radosavljevic and Anderson 2014).
 #' * **Random forest**: a probability forest from `ranger::ranger()`, with each
 #'   tree drawn from an equal number of presences and background points
 #'   (balanced down-sampling), which keeps the 1:10 class imbalance from
@@ -73,12 +94,15 @@ bioclim_vars <- c("bio01", "bio04", "bio05", "bio06",
 #'
 #' # Evaluation
 #'
-#' Before the final fit, a stratified `test_frac` of the presences and
-#' background is held out, both members are trained on the rest, and each
-#' member and the ensemble are scored on the held-out points:
+#' Before the final fit, a stratified `test_frac` of the pseudo-presences and
+#' pseudo-absences is held out, both members are trained on the rest, and each
+#' member and the ensemble are scored on the held-out points. With
+#' `maxnet_background = "extent"`, MaxEnt's background excludes the held-out
+#' cells, and the scoring is the same as with `"outside"`, so the metrics of
+#' the two designs are comparable:
 #'
 #' * **AUC**, the probability that a held-out presence scores above a held-out
-#'   background point.
+#'   pseudo-absence.
 #' * **Continuous Boyce index** (Hirzel et al. 2006): the Spearman correlation
 #'   between suitability and the predicted-to-expected ratio of held-out
 #'   presences, over a moving window. Near 1 means presences concentrate where
@@ -116,12 +140,20 @@ bioclim_vars <- c("bio01", "bio04", "bio05", "bio06",
 #' @param predictors Climate variables to fit on: the eight [bioclim_vars] by
 #'   default, or a subset of them.
 #' @param n_presence Number of pseudo-presences drawn inside the range.
-#' @param n_background Number of background points drawn outside it.
+#' @param n_background Number of pseudo-absences drawn outside it.
+#' @param maxnet_background `"extent"` (the default) to train MaxEnt on
+#'   background drawn from the whole study extent, or `"outside"` to train it
+#'   on the forest's pseudo-absences (the earlier design). See "Training data".
+#' @param n_maxnet_background Most background points for MaxEnt when
+#'   `maxnet_background = "extent"`.
+#' @param regmult MaxEnt regularization multiplier, a positive number; see
+#'   "Members and ensemble". The random forest is unaffected.
 #' @param buffer Study-extent buffer around the range's bounding box, as a
 #'   proportion of the box's diagonal.
 #' @param threshold `"p10"` (the default), `"tss"`, or a fixed number in
 #'   `(0, 1)`.
-#' @param test_frac Share of presences and background held out for evaluation.
+#' @param test_frac Share of pseudo-presences and pseudo-absences held out for
+#'   evaluation.
 #' @param num_trees Trees in the random forest.
 #' @param seed Random seed for sampling, the hold-out split and the forest.
 #' @param fossils Optional dated fossil occurrences, in any form
@@ -129,18 +161,25 @@ bioclim_vars <- c("bio01", "bio04", "bio05", "bio06",
 #' @param n_fossil Number of fossil presences to draw; defaults to
 #'   `n_presence`.
 #' @param land Optional `sf`/`sfc` land outline used to mask predictions and
-#'   restrict the background to land. Defaults to Natural Earth at medium
+#'   restrict pseudo-absences and background to land. Defaults to Natural Earth at medium
 #'   resolution.
 #' @param quiet Suppress progress messages.
 #' @return A `richcast_sdm`. `metrics` holds AUC and Boyce for `maxent`, `rf`
 #'   and `ensemble`; `range_cells` is the number of grid cells with climate the
 #'   range covers; `threshold` is the cutoff in use and `cutoffs` holds both
-#'   the `p10` and `tss` cutoffs. A model fitted with fossils also records `n_fossil`,
+#'   the `p10` and `tss` cutoffs; `maxnet_background` and `n_maxnet_background`
+#'   record MaxEnt's background (the latter equals `n_background` for
+#'   `"outside"`), and `regmult` its regularization multiplier. A model
+#'   fitted with fossils also records `n_fossil`,
 #'   `n_fossil_background`, `fossil_units` and `fossil_draws` (the unit, age
 #'   and slice of every fossil presence).
 #' @references Hirzel, A. H., Le Lay, G., Helfer, V., Randin, C., & Guisan, A.
 #'   (2006). Evaluating the ability of habitat suitability models to predict
 #'   species presences. *Ecological Modelling*, 199, 142-152.
+#'
+#'   Radosavljevic, A., & Anderson, R. P. (2014). Making better Maxent models
+#'   of species distributions: complexity, overfitting and evaluation.
+#'   *Journal of Biogeography*, 41, 629-643.
 #' @seealso [project_sdm()], [run_hindcast_series()]
 #' @export
 fit_sdm <- function(db,
@@ -149,6 +188,9 @@ fit_sdm <- function(db,
                     predictors = bioclim_vars,
                     n_presence = 100,
                     n_background = 1000,
+                    maxnet_background = c("extent", "outside"),
+                    n_maxnet_background = 10000,
+                    regmult = 1,
                     buffer = 0.3,
                     threshold = "p10",
                     test_frac = 0.25,
@@ -169,6 +211,10 @@ fit_sdm <- function(db,
 
   predictors <- check_predictors(predictors)
   check_threshold(threshold)
+  maxnet_background <- match.arg(maxnet_background)
+  if (!is.numeric(regmult) || length(regmult) != 1 || is.na(regmult) || regmult <= 0) {
+    rc_abort("{.arg regmult} must be a single positive number.")
+  }
   row <- db_row(db, species)
   sp_name <- row$species
   sp_geom <- sf::st_geometry(row)
@@ -222,7 +268,16 @@ fit_sdm <- function(db,
       "[{sp_name}] Range covers only {range_cells} grid cell{?s}; using {nrow(pres_df)} pseudo-presence{?s}."
     )
   }
-  say("[{sp_name}] {nrow(pres_df)} pseudo-presences, {nrow(bg_df)} background")
+  say("[{sp_name}] {nrow(pres_df)} pseudo-presences, {nrow(bg_df)} pseudo-absences")
+
+  # Drawn after the pseudo-absences, so the forest's samples, and with them
+  # its fits, are the same under either design.
+  mx_bg <- NULL
+  if (maxnet_background == "extent") {
+    ext_vec <- terra::intersect(study_vec, land_vec)
+    mx_bg <- sample_cells(present, ext_vec, n_maxnet_background)[predictors]
+    say("[{sp_name}] {nrow(mx_bg)} MaxEnt background points across the study extent")
+  }
 
   response <- c(rep(1L, nrow(pres_df)), rep(0L, nrow(bg_df)))
   covars <- rbind(pres_df[predictors], bg_df[predictors])
@@ -244,14 +299,15 @@ fit_sdm <- function(db,
   # --- Hold-out evaluation ------------------------------------------------
   metrics <- if (test_frac > 0) {
     evaluate_holdout(response, covars, test_frac, num_trees, seed,
-                     eligible = modern)
+                     eligible = modern, mx_bg = mx_bg, regmult = regmult)
   } else {
     tibble::tibble(model = c("maxent", "rf", "ensemble"),
                    auc = NA_real_, boyce = NA_real_)
   }
 
   # --- Final fit on every point -------------------------------------------
-  members <- fit_members(response, covars, num_trees, seed)
+  members <- fit_members(response, covars, num_trees, seed, mx_bg = mx_bg,
+                         modern = modern, regmult = regmult)
   fitted <- predict_members(members, covars)
 
   # --- Present-day prediction and cutoffs ---------------------------------
@@ -282,6 +338,9 @@ fit_sdm <- function(db,
       metrics        = metrics,
       n_presence     = nrow(pres_df),
       n_background   = nrow(bg_df),
+      maxnet_background   = maxnet_background,
+      n_maxnet_background = if (is.null(mx_bg)) nrow(bg_df) else nrow(mx_bg),
+      regmult        = regmult,
       range_cells    = range_cells,
       study_extent   = as.vector(study_ext),
       present_cells  = count_above(suit, cutoff),
@@ -373,7 +432,13 @@ print.richcast_sdm <- function(x, ...) {
   m <- x$metrics
   cli::cli_text("{.cls richcast_sdm} {.strong {x$species}}")
   cli::cli_text("  {length(x$predictors)} predictors: {.val {x$predictors}}")
-  cli::cli_text("  {x$n_presence} pseudo-presences ({x$range_cells} range cell{?s}), {x$n_background} background")
+  cli::cli_text("  {x$n_presence} pseudo-presences ({x$range_cells} range cell{?s}), {x$n_background} pseudo-absences")
+  if (identical(x$maxnet_background, "extent")) {
+    cli::cli_text("  MaxEnt background: {x$n_maxnet_background} points across the study extent")
+  }
+  if (!is.null(x$regmult) && x$regmult != 1) {
+    cli::cli_text("  MaxEnt regularization multiplier: {x$regmult}")
+  }
   if (!is.null(x$n_fossil)) {
     cli::cli_text("  {x$n_fossil} fossil presences from {x$fossil_units} unit{?s}, {x$n_fossil_background} time-matched background")
   }
@@ -397,10 +462,24 @@ print.richcast_projection <- function(x, ...) {
 # ==============================================================================
 
 #' Fit both ensemble members
+#'
+#' `mx_bg`, if given, replaces the modern pseudo-absences as MaxEnt's
+#' background; presences and any fossil (non-modern) background are kept.
 #' @noRd
-fit_members <- function(response, covars, num_trees, seed) {
+fit_members <- function(response, covars, num_trees, seed, mx_bg = NULL,
+                        modern = rep(TRUE, length(response)), regmult = 1) {
   covars <- as.data.frame(covars)
-  maxent <- maxnet::maxnet(p = response, data = covars, regmult = 1)
+  if (is.null(mx_bg)) {
+    maxent <- maxnet::maxnet(p = response, data = covars, regmult = regmult)
+  } else {
+    keep <- response == 1 | !modern
+    maxent <- maxnet::maxnet(
+      p = c(response[keep], rep(0L, nrow(mx_bg))),
+      data = rbind(covars[keep, , drop = FALSE],
+                   as.data.frame(mx_bg)[names(covars)]),
+      regmult = regmult
+    )
+  }
 
   # Balanced down-sampling: every tree sees as many background points as
   # presences. Class order follows the factor levels, "0" then "1".
@@ -453,15 +532,24 @@ predict_surface <- function(r, members, land_geom) {
 #' Score members on a stratified hold-out
 #' @noRd
 evaluate_holdout <- function(response, covars, test_frac, num_trees, seed,
-                             eligible = rep(TRUE, length(response))) {
+                             eligible = rep(TRUE, length(response)),
+                             mx_bg = NULL, regmult = 1) {
   set.seed(seed)
   pick <- function(idx) idx[sample.int(length(idx), max(1, round(length(idx) * test_frac)))]
   # Only `eligible` points (the range's, when fossils are added) are held out.
   test <- c(pick(which(response == 1 & eligible)),
             pick(which(response == 0 & eligible)))
 
+  # MaxEnt's background must not contain the held-out pseudo-absences' cells;
+  # equal climate vectors identify the same cell.
+  if (!is.null(mx_bg)) {
+    key <- function(d) do.call(paste, as.data.frame(d)[names(covars)])
+    held <- covars[test[response[test] == 0], , drop = FALSE]
+    mx_bg <- mx_bg[!key(mx_bg) %in% key(held), , drop = FALSE]
+  }
   members <- fit_members(response[-test], covars[-test, , drop = FALSE],
-                         num_trees, seed)
+                         num_trees, seed, mx_bg = mx_bg,
+                         modern = eligible[-test], regmult = regmult)
   pred <- predict_members(members, covars[test, , drop = FALSE])
   obs <- response[test]
 

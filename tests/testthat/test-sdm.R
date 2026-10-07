@@ -164,3 +164,111 @@ test_that("models use the eight canonical bioclim variables and nothing else", {
                                times = 850, extent = c(0, 1, 0, 1)),
                "canonical")
 })
+
+test_that("MaxEnt can take background from the whole extent; the forest keeps its pseudo-absences", {
+  skip_if_not_installed("maxnet")
+  skip_if_not_installed("ranger")
+  dir <- withr::local_tempdir()
+  clim <- structured_climate(dir, times = 850)
+  db <- two_species_db()
+
+  fd <- fit_sdm(db, "Genus_low", clim, land = fake_land(), num_trees = 50,
+                quiet = TRUE)
+  f0 <- fit_sdm(db, "Genus_low", clim, land = fake_land(), num_trees = 50,
+                maxnet_background = "outside", quiet = TRUE)
+  fe <- fit_sdm(db, "Genus_low", clim, land = fake_land(), num_trees = 50,
+                maxnet_background = "extent", quiet = TRUE)
+
+  # The default is the extent design, recorded on the model, and naming it
+  # changes nothing; "outside" is recorded too.
+  expect_equal(fd$maxnet_background, "extent")
+  expect_equal(terra::values(suitability(fd)), terra::values(suitability(fe)))
+  expect_equal(fd$metrics, fe$metrics)
+  expect_equal(fd$cutoffs, fe$cutoffs)
+  expect_equal(f0$maxnet_background, "outside")
+  expect_equal(f0$n_maxnet_background, f0$n_background)
+
+  # The extent holds fewer land cells than either sample asks for, so the
+  # pseudo-absences are every cell outside the range and MaxEnt's background
+  # is every cell, the range's included.
+  expect_equal(fe$maxnet_background, "extent")
+  expect_equal(fe$n_background, f0$n_background)
+  expect_equal(fe$n_maxnet_background, fe$n_background + fe$range_cells)
+
+  # Only MaxEnt changes: the forest is fitted on the same points as before.
+  d <- as.data.frame(terra::rast(file.path(dir, "present_1985",
+                                            paste0(bioclim_vars, ".tif"))))
+  p0 <- richcast:::predict_members(f0$members, d)
+  pe <- richcast:::predict_members(fe$members, d)
+  expect_equal(pe[, "rf"], p0[, "rf"])
+  # maxnet adds the presences to its background, and here they are every
+  # range cell, so on this coarse grid the two designs give MaxEnt the same
+  # points; the fine-grid test below shows MaxEnt changing.
+  expect_equal(pe[, "maxent"], p0[, "maxent"])
+  expect_equal(fe$metrics$auc[fe$metrics$model == "rf"],
+               f0$metrics$auc[f0$metrics$model == "rf"])
+
+  expect_error(fit_sdm(db, "Genus_low", clim, maxnet_background = "inside"),
+               "should be one of")
+})
+
+test_that("on a fine grid, extent background changes MaxEnt only, up to its cap", {
+  skip_if_not_installed("maxnet")
+  skip_if_not_installed("ranger")
+  dir <- withr::local_tempdir()
+  # The range holds far more cells than the 100 pseudo-presences, so the
+  # extent background reaches cells inside it that the default never sees.
+  r <- terra::rast(nrows = 100, ncols = 100, xmin = 0, xmax = 10, ymin = 0,
+                   ymax = 10, crs = "EPSG:4326")
+  xy <- terra::xyFromCell(r, seq_len(terra::ncell(r)))
+  for (lbl in c("present_1985", "time_0850")) {
+    d <- file.path(dir, lbl)
+    dir.create(d)
+    b1 <- r; terra::values(b1) <- xy[, 1] * 3 + xy[, 2]; names(b1) <- "bio01"
+    b2 <- r; terra::values(b2) <- xy[, 2] * 2 - xy[, 1]; names(b2) <- "bio12"
+    terra::writeRaster(b1, file.path(d, "bio01.tif"))
+    terra::writeRaster(b2, file.path(d, "bio12.tif"))
+  }
+  clim <- climate_dir(dir)
+  fit <- function(...) {
+    fit_sdm(two_species_db(), "Genus_low", clim, land = fake_land(),
+            predictors = c("bio01", "bio12"), num_trees = 50, quiet = TRUE, ...)
+  }
+  f0 <- fit(maxnet_background = "outside")
+  fe <- fit(maxnet_background = "extent", n_maxnet_background = 2000)
+  expect_equal(fe$n_maxnet_background, 2000L)
+  d <- as.data.frame(terra::rast(file.path(dir, "present_1985",
+                                            c("bio01.tif", "bio12.tif"))))
+  p0 <- richcast:::predict_members(f0$members, d)
+  pe <- richcast:::predict_members(fe$members, d)
+  expect_equal(pe[, "rf"], p0[, "rf"])
+  expect_false(isTRUE(all.equal(pe[, "maxent"], p0[, "maxent"])))
+})
+
+test_that("regmult sets MaxEnt's regularization and leaves the forest alone", {
+  skip_if_not_installed("maxnet")
+  skip_if_not_installed("ranger")
+  dir <- withr::local_tempdir()
+  clim <- structured_climate(dir, times = 850)
+  db <- two_species_db()
+  f1 <- fit_sdm(db, "Genus_low", clim, land = fake_land(), num_trees = 50, quiet = TRUE)
+  f2 <- fit_sdm(db, "Genus_low", clim, land = fake_land(), num_trees = 50, regmult = 1,
+                quiet = TRUE)
+  f5 <- fit_sdm(db, "Genus_low", clim, land = fake_land(), num_trees = 50, regmult = 5,
+                quiet = TRUE)
+  expect_equal(f1$regmult, 1)
+  expect_equal(f5$regmult, 5)
+  expect_equal(terra::values(suitability(f2)), terra::values(suitability(f1)))
+
+  d <- as.data.frame(terra::rast(file.path(dir, "present_1985",
+                                            paste0(bioclim_vars, ".tif"))))
+  p1 <- richcast:::predict_members(f1$members, d)
+  p5 <- richcast:::predict_members(f5$members, d)
+  expect_equal(p5[, "rf"], p1[, "rf"])
+  expect_false(isTRUE(all.equal(p5[, "maxent"], p1[, "maxent"])))
+  # Stronger regularization keeps fewer features.
+  expect_lte(length(f5$members$maxent$betas), length(f1$members$maxent$betas))
+
+  expect_error(fit_sdm(db, "Genus_low", clim, regmult = 0), "regmult")
+  expect_error(fit_sdm(db, "Genus_low", clim, regmult = c(1, 2)), "regmult")
+})

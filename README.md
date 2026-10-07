@@ -99,9 +99,13 @@ For each species, `fit_sdm()`:
 * sets a **study extent** of the range's bounding box plus 30% of its
   diagonal;
 * draws **100 pseudo-presences** inside the range polygon and **1000
-  background points** from the rest of the extent;
-* fits a **random forest** (`ranger`, balanced down-sampling) and **MaxEnt**
-  (`maxnet`) and averages them with equal weight;
+  pseudo-absences** from the rest of the extent;
+* fits a **random forest** (`ranger`, balanced down-sampling) on the
+  pseudo-presences and pseudo-absences, and **MaxEnt** (`maxnet`) on the
+  pseudo-presences against background from the whole extent (up to 10,000
+  land cells, inside the range too; `maxnet_background = "outside"` uses the
+  pseudo-absences instead), and averages them with equal weight. `regmult`
+  sets MaxEnt's regularization;
 * sets presence at the **p10 threshold**, the tenth percentile of ensemble
   suitability at the training presences;
 * scores **AUC and the continuous Boyce index** for each member and the

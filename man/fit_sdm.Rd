@@ -11,6 +11,9 @@ fit_sdm(
   predictors = bioclim_vars,
   n_presence = 100,
   n_background = 1000,
+  maxnet_background = c("extent", "outside"),
+  n_maxnet_background = 10000,
+  regmult = 1,
   buffer = 0.3,
   threshold = "p10",
   test_frac = 0.25,
@@ -34,7 +37,17 @@ default, or a subset of them.}
 
 \item{n_presence}{Number of pseudo-presences drawn inside the range.}
 
-\item{n_background}{Number of background points drawn outside it.}
+\item{n_background}{Number of pseudo-absences drawn outside it.}
+
+\item{maxnet_background}{\code{"extent"} (the default) to train MaxEnt on
+background drawn from the whole study extent, or \code{"outside"} to train it
+on the forest's pseudo-absences (the earlier design). See "Training data".}
+
+\item{n_maxnet_background}{Most background points for MaxEnt when
+\code{maxnet_background = "extent"}.}
+
+\item{regmult}{MaxEnt regularization multiplier, a positive number; see
+"Members and ensemble". The random forest is unaffected.}
 
 \item{buffer}{Study-extent buffer around the range's bounding box, as a
 proportion of the box's diagonal.}
@@ -42,14 +55,15 @@ proportion of the box's diagonal.}
 \item{threshold}{\code{"p10"} (the default), \code{"tss"}, or a fixed number in
 \verb{(0, 1)}.}
 
-\item{test_frac}{Share of presences and background held out for evaluation.}
+\item{test_frac}{Share of pseudo-presences and pseudo-absences held out for
+evaluation.}
 
 \item{num_trees}{Trees in the random forest.}
 
 \item{seed}{Random seed for sampling, the hold-out split and the forest.}
 
 \item{land}{Optional \code{sf}/\code{sfc} land outline used to mask predictions and
-restrict the background to land. Defaults to Natural Earth at medium
+restrict pseudo-absences and background to land. Defaults to Natural Earth at medium
 resolution.}
 
 \item{fossils}{Optional dated fossil occurrences, in any form
@@ -64,7 +78,10 @@ resolution.}
 A \code{richcast_sdm}. \code{metrics} holds AUC and Boyce for \code{maxent}, \code{rf}
 and \code{ensemble}; \code{range_cells} is the number of grid cells with climate the
 range covers; \code{threshold} is the cutoff in use and \code{cutoffs} holds both
-the \code{p10} and \code{tss} cutoffs. A model fitted with fossils also records \code{n_fossil},
+the \code{p10} and \code{tss} cutoffs; \code{maxnet_background} and \code{n_maxnet_background}
+record MaxEnt's background (the latter equals \code{n_background} for
+\code{"outside"}), and \code{regmult} its regularization multiplier. A model
+fitted with fossils also records \code{n_fossil},
 \code{n_fossil_background}, \code{fossil_units} and \code{fossil_draws} (the unit, age
 and slice of every fossil presence).
 }
@@ -78,15 +95,36 @@ slices.
 The study extent is the range polygon's bounding box, widened on every side
 by \code{buffer} times its diagonal (30\% by default). Inside it, \code{n_presence}
 pseudo-presences are drawn from grid cells inside the range polygon and
-\code{n_background} background points from land cells outside it, both without
+\code{n_background} pseudo-absences from land cells outside it, both without
 replacement. A range covering fewer cells than \code{n_presence} contributes
 every cell it has; \code{range_cells} on the result says how many that was.
+
+What MaxEnt is contrasted with is set by \code{maxnet_background}:
+\itemize{
+\item \code{"extent"} (the default): background drawn from every land cell of the
+study extent, inside the range polygon too, up to \code{n_maxnet_background} points without
+replacement (all land cells if there are fewer). This is MaxEnt's own
+presence-versus-availability design. The forest, a classifier, keeps the
+pseudo-absences: background inside the range would carry the absence
+label on the presences' own climate and cap its probabilities there.
+\item \code{"outside"}: the same pseudo-absences as the forest, so both members
+learn the range against its surroundings. This was the only design
+before \code{maxnet_background} was added; use it to reproduce earlier runs.
+}
+
+maxnet adds the pseudo-presences to its background in either design, so
+with \code{"outside"} its background is the pseudo-absences plus the
+pseudo-presences' cells, and \code{"extent"} differs from it only where the
+range holds more cells than \code{n_presence}.
 }
 
 \section{Members and ensemble}{
 \itemize{
-\item \strong{MaxEnt}: \code{maxnet::maxnet()} with default features and \code{regmult = 1},
-predicted on the cloglog scale.
+\item \strong{MaxEnt}: \code{maxnet::maxnet()} with default features, predicted on the
+cloglog scale. \code{regmult} scales its regularization (1 by default, as in
+maxnet): higher values give smoother, more general response curves,
+lower values follow the training data more closely and risk overfitting
+(Radosavljevic and Anderson 2014).
 \item \strong{Random forest}: a probability forest from \code{ranger::ranger()}, with each
 tree drawn from an equal number of presences and background points
 (balanced down-sampling), which keeps the 1:10 class imbalance from
@@ -107,12 +145,15 @@ model in \code{cutoffs} whichever rule is chosen, so \code{\link[=richness_at]{r
 }
 
 \section{Evaluation}{
-Before the final fit, a stratified \code{test_frac} of the presences and
-background is held out, both members are trained on the rest, and each
-member and the ensemble are scored on the held-out points:
+Before the final fit, a stratified \code{test_frac} of the pseudo-presences and
+pseudo-absences is held out, both members are trained on the rest, and each
+member and the ensemble are scored on the held-out points. With
+\code{maxnet_background = "extent"}, MaxEnt's background excludes the held-out
+cells, and the scoring is the same as with \code{"outside"}, so the metrics of
+the two designs are comparable:
 \itemize{
 \item \strong{AUC}, the probability that a held-out presence scores above a held-out
-background point.
+pseudo-absence.
 \item \strong{Continuous Boyce index} (Hirzel et al. 2006): the Spearman correlation
 between suitability and the predicted-to-expected ratio of held-out
 presences, over a moving window. Near 1 means presences concentrate where
@@ -151,6 +192,10 @@ well the model still fits the present-day range.
 Hirzel, A. H., Le Lay, G., Helfer, V., Randin, C., & Guisan, A.
 (2006). Evaluating the ability of habitat suitability models to predict
 species presences. \emph{Ecological Modelling}, 199, 142-152.
+
+Radosavljevic, A., & Anderson, R. P. (2014). Making better Maxent models
+of species distributions: complexity, overfitting and evaluation.
+\emph{Journal of Biogeography}, 41, 629-643.
 }
 \seealso{
 \code{\link[=project_sdm]{project_sdm()}}, \code{\link[=run_hindcast_series]{run_hindcast_series()}}
