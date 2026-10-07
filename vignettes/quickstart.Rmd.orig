@@ -1,0 +1,119 @@
+---
+title: "Quick start: a skeletal richcast workflow"
+author: "Nimrod Marom"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Quick start: a skeletal richcast workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", message = TRUE,
+                      warning = FALSE, fig.width = 7, fig.height = 5,
+                      dpi = 80, fig.path = "quickstart-")
+```
+
+## Basic vignette for 'richcast'
+
+'richcast' provides a hindcasted estimate of taxonomic richness for a given region and set of taxa, based on palaeoclimatic models and IUCN polygons fed to an SDM ensemble of maxent (background and pseudo-presences) and random forest (pseudo-absences and pseudo-presences) members, with suitability thresholded by p10 (default) or TSS. The projected, thresholded ranges are summed for each pixel, creating a richness surface. Fully worked out vignettes and applications are available in nxmarom/richcast/vignettes; this is a skeletal workflow meant for a quick start.
+
+The IUCN polygons are stored in a subfolder ("geo_data") of the working directory ("try_richcast") under folders unzipped and renamed (for convenience) from the batch IUCN downloads. Here's how it looks on my machine:
+
+```
+nimrod@nX1:~/R_projects/try_richcast/geo_data$ ls
+bovid_IUCN  cervid_IUCN  equid_IUCN  sus_IUCN                     <-- unzipped and renamed IUCN batch downloads
+nimrod@nX1:~/R_projects/try_richcast/geo_data$ cd bovid_IUCN/     <-- so, e.g., for bovids
+nimrod@nX1:~/R_projects/try_richcast/geo_data/bovid_IUCN$ ls      <-- that would be the content.
+ data_0.cpg
+ data_0.dbf
+ data_0.prj
+ data_0.shp
+ data_0.shx
+'IUCN Red List_Terms and Conditions of Use_v3.pdf'
+'METADATA for Digital Distribution Maps of The IUCN Red List of Threatened Species.pdf'
+ ReadMe.txt
+```
+
+After loading the library, we start with `build_taxon_db()`, which receives the IUCN range polygons, stored in a project subfolder, as just shown. It outputs an `sf` object with species and associated polygons, consolidated across each species range.
+
+```{r}
+# load it, after installing with remotes::install_github("nxmarom/richcast")
+library(richcast)
+
+db <- build_taxon_db(
+  iucn_folder("geo_data")
+  )
+
+db
+```
+
+You may be interested in a few key species. These are the guys that figure prominently in the prehistory of the Levant; let's use only those, for brevity.
+
+```{r}
+sel_species <- c("Dama_dama", "Dama_mesopotamica", "Sus_scrofa", "Gazella_gazella", "Gazella_dorcas", "Cervus_elaphus")
+
+db_sbs <- db[db$species %in% sel_species, ]
+
+db_sbs
+```
+
+We'll do the hindcast using the "Beyer2020" dataset from pastclim. I always get confused with the time steps, so
+
+```{r}
+steps_bp <- pastclim::get_time_bp_steps(dataset = "Beyer2020")
+steps_bp[50:60]                               # years BP, as negative numbers: just to see how it looks
+
+times_ce <- bp_to_ce(steps_bp[steps_bp < 0])  # richcast works in years CE; the present is added separately
+better_times <- times_ce[57:61]               # it's close to lunch already
+better_times
+```
+
+Ok, now prepare the climate part of the model...
+
+```{r}
+clim <- prepare_climate(
+  "beyer",                              # that's a new sub-directory where the rasters go
+  vars         = bioclim_vars,          # eight by default, you can change that
+  times        = better_times,          # indeed
+  extent       = c(-180, 180, -60, 90), # all over, or get your own (xmin, xmax, ymin, ymax)
+  dataset_past = "Beyer2020",           # use "Beyer2020"
+  agg_past     = 1,                     # to overcome resolution mismatch if training on a different product
+  present_dir  = "beyer_1950",          # that's our present, so it's the same resolution
+  quiet        = TRUE                   # unless you are bored
+)
+
+clim
+```
+
+That's the main dish, so to speak. Species that belong to a merged taxon are folded into it, so `species` can simply list the species.
+
+```{r}
+res <- run_hindcast_series(
+  db_sbs, clim,                             # see above
+  times        = better_times,              # oh will they ever come
+  region       = region("middle_east"),     # there are some presets, see help
+  species      = sel_species,               # just the ones we need
+  merge        = list(                      # manually merge species, useful for zooarch
+    Cervid     = c("Dama_dama",
+                   "Dama_mesopotamica",
+                   "Cervus_elaphus"),
+    Gazella_sp = c("Gazella_gazella",
+                   "Gazella_dorcas")
+    ),
+  predictors = c("bio01", "bio12"),         # lunch
+  quiet      = TRUE                         # please
+)
+
+res$taxa # which species went into which taxon
+```
+
+The resulting object contains many things that you can use, hopefully.
+
+```{r}
+res$models   # a summary of the models with some results and fit metrics
+names(res$surfaces) # the richness surfaces, one per slice, that you can plot
+temp <- richness_surface(res, -10050) # unwraps it: surfaces are stored wrapped, so the result can be saved as an RDS
+terra::plot(temp) # plot from 'terra'
+richness_at(res, 35.0500, 32.7333, -12050, climate = clim) # or the richness in Mt. Carmel, so long ago.
+```
