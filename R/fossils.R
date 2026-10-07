@@ -24,6 +24,37 @@
 #'   Rows with the same `unit_id` (or, without one, the same species and
 #'   coordinates) are one unit.
 #'
+#' # Input format
+#'
+#' One dated unit is one dated find, layer or cluster of layers at a site.
+#' Its age uncertainty is given as the probability of each model slice
+#' (`ka_bp`, in thousands of years before present, on the climate's slice
+#' grid). In the **wide** form, each row is a unit:
+#'
+#' | species | unit_id | locality | lon | lat | slices |
+#' |---|---|---|---|---|---|
+#' | Cervus_elaphus | KEB-D | Kebara Cave | 34.94 | 32.56 | 36:0.3;38:0.4;40:0.3 |
+#' | Cervus_elaphus | AMU-B2 | Amud Cave | 35.50 | 32.87 | 50:0.2;52:0.5;54:0.3 |
+#' | Capreolus_capreolus | KEB-D | Kebara Cave | 34.94 | 32.56 | 36:0.3;38:0.4;40:0.3 |
+#' | Capreolus_capreolus | QAF-IX | Qafzeh | 35.30 | 32.68 | 32:1 |
+#'
+#' The same table in the **long** form has one row per unit and slice:
+#'
+#' | species | unit_id | locality | lon | lat | ka_bp | weight |
+#' |---|---|---|---|---|---|---|
+#' | Cervus_elaphus | KEB-D | Kebara Cave | 34.94 | 32.56 | 36 | 0.3 |
+#' | Cervus_elaphus | KEB-D | Kebara Cave | 34.94 | 32.56 | 38 | 0.4 |
+#' | Cervus_elaphus | KEB-D | Kebara Cave | 34.94 | 32.56 | 40 | 0.3 |
+#' | Cervus_elaphus | AMU-B2 | Amud Cave | 35.50 | 32.87 | 50 | 0.2 |
+#' | ... | | | | | | |
+#'
+#' `species` must match the names in the taxon database (underscores or
+#' spaces), and must name the fitted species, not a merged taxon. A unit
+#' known to fall in a single slice gets one pair with probability 1 (Qafzeh
+#' above); weights need not sum to 1. A layer dated by a range rather than by
+#' dates can be spread evenly over the slices the range covers. The values in
+#' these tables are made up.
+#'
 #' A unit's probabilities are rescaled to sum to 1. An optional `block`
 #' column, `"lon_lat"` of a box centre, gives the 1 x 1 degree box searched
 #' for the nearest cell with climate when the site's own cell has none in a
@@ -56,8 +87,31 @@
 #'   package version 0.2.0. \doi{10.32614/CRAN.package.roadDB}
 #' @seealso [fit_sdm()] ("Fossil presences")
 #' @examples
-#' fossil_presences(data.frame(species = "Cervus elaphus", lon = 35, lat = 32.6,
-#'                             slices = "34:0.8;36:0.2"))
+#' # Wide form: one row per dated unit (made-up values)
+#' wide <- data.frame(
+#'   species  = c("Cervus_elaphus", "Cervus_elaphus", "Capreolus_capreolus"),
+#'   unit_id  = c("KEB-D", "AMU-B2", "QAF-IX"),
+#'   locality = c("Kebara Cave", "Amud Cave", "Qafzeh"),
+#'   lon      = c(34.94, 35.50, 35.30),
+#'   lat      = c(32.56, 32.87, 32.68),
+#'   slices   = c("36:0.3;38:0.4;40:0.3", "50:0.2;52:0.5;54:0.3", "32:1")
+#' )
+#' fossil_presences(wide)
+#'
+#' # Long form: one row per unit and slice (the Kebara and Qafzeh units above)
+#' long <- data.frame(
+#'   species  = c(rep("Cervus_elaphus", 3), "Capreolus_capreolus"),
+#'   unit_id  = c("KEB-D", "KEB-D", "KEB-D", "QAF-IX"),
+#'   lon      = c(34.94, 34.94, 34.94, 35.30),
+#'   lat      = c(32.56, 32.56, 32.56, 32.68),
+#'   ka_bp    = c(36, 38, 40, 32),
+#'   weight   = c(0.3, 0.4, 0.3, 1)
+#' )
+#' fossil_presences(long)
+#'
+#' # A CSV in either form works too:
+#' # fossils <- fossil_presences("my_fossils.csv")
+#' # fit_sdm(db, "Cervus_elaphus", clim, fossils = fossils)
 #' @export
 fossil_presences <- function(x) {
   if (is.character(x) && length(x) == 1) x <- utils::read.csv(x, stringsAsFactors = FALSE)

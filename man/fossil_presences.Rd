@@ -28,6 +28,36 @@ semicolons, e.g. \code{"34:0.8;36:0.2"}, one row per dated unit.
 Rows with the same \code{unit_id} (or, without one, the same species and
 coordinates) are one unit.
 }
+}
+\section{Input format}{
+One dated unit is one dated find, layer or cluster of layers at a site.
+Its age uncertainty is given as the probability of each model slice
+(\code{ka_bp}, in thousands of years before present, on the climate's slice
+grid). In the \strong{wide} form, each row is a unit:\tabular{llllll}{
+   species \tab unit_id \tab locality \tab lon \tab lat \tab slices \cr
+   Cervus_elaphus \tab KEB-D \tab Kebara Cave \tab 34.94 \tab 32.56 \tab 36:0.3;38:0.4;40:0.3 \cr
+   Cervus_elaphus \tab AMU-B2 \tab Amud Cave \tab 35.50 \tab 32.87 \tab 50:0.2;52:0.5;54:0.3 \cr
+   Capreolus_capreolus \tab KEB-D \tab Kebara Cave \tab 34.94 \tab 32.56 \tab 36:0.3;38:0.4;40:0.3 \cr
+   Capreolus_capreolus \tab QAF-IX \tab Qafzeh \tab 35.30 \tab 32.68 \tab 32:1 \cr
+}
+
+
+The same table in the \strong{long} form has one row per unit and slice:\tabular{lllllll}{
+   species \tab unit_id \tab locality \tab lon \tab lat \tab ka_bp \tab weight \cr
+   Cervus_elaphus \tab KEB-D \tab Kebara Cave \tab 34.94 \tab 32.56 \tab 36 \tab 0.3 \cr
+   Cervus_elaphus \tab KEB-D \tab Kebara Cave \tab 34.94 \tab 32.56 \tab 38 \tab 0.4 \cr
+   Cervus_elaphus \tab KEB-D \tab Kebara Cave \tab 34.94 \tab 32.56 \tab 40 \tab 0.3 \cr
+   Cervus_elaphus \tab AMU-B2 \tab Amud Cave \tab 35.50 \tab 32.87 \tab 50 \tab 0.2 \cr
+   ... \tab  \tab  \tab  \tab  \tab  \tab  \cr
+}
+
+
+\code{species} must match the names in the taxon database (underscores or
+spaces), and must name the fitted species, not a merged taxon. A unit
+known to fall in a single slice gets one pair with probability 1 (Qafzeh
+above); weights need not sum to 1. A layer dated by a range rather than by
+dates can be spread evenly over the slices the range covers. The values in
+these tables are made up.
 
 A unit's probabilities are rescaled to sum to 1. An optional \code{block}
 column, \code{"lon_lat"} of a box centre, gives the 1 x 1 degree box searched
@@ -35,6 +65,7 @@ for the nearest cell with climate when the site's own cell has none in a
 slice; without it, the eight cells around the site are searched. Other
 columns, such as \code{locality}, are kept.
 }
+
 \section{Data sources}{
 richcast ships no fossil data. A natural source is the ROCEEH Out of
 Africa Database (ROAD; Kandel et al. 2023), which can be queried from R
@@ -47,8 +78,31 @@ up.
 }
 
 \examples{
-fossil_presences(data.frame(species = "Cervus elaphus", lon = 35, lat = 32.6,
-                            slices = "34:0.8;36:0.2"))
+# Wide form: one row per dated unit (made-up values)
+wide <- data.frame(
+  species  = c("Cervus_elaphus", "Cervus_elaphus", "Capreolus_capreolus"),
+  unit_id  = c("KEB-D", "AMU-B2", "QAF-IX"),
+  locality = c("Kebara Cave", "Amud Cave", "Qafzeh"),
+  lon      = c(34.94, 35.50, 35.30),
+  lat      = c(32.56, 32.87, 32.68),
+  slices   = c("36:0.3;38:0.4;40:0.3", "50:0.2;52:0.5;54:0.3", "32:1")
+)
+fossil_presences(wide)
+
+# Long form: one row per unit and slice (the Kebara and Qafzeh units above)
+long <- data.frame(
+  species  = c(rep("Cervus_elaphus", 3), "Capreolus_capreolus"),
+  unit_id  = c("KEB-D", "KEB-D", "KEB-D", "QAF-IX"),
+  lon      = c(34.94, 34.94, 34.94, 35.30),
+  lat      = c(32.56, 32.56, 32.56, 32.68),
+  ka_bp    = c(36, 38, 40, 32),
+  weight   = c(0.3, 0.4, 0.3, 1)
+)
+fossil_presences(long)
+
+# A CSV in either form works too:
+# fossils <- fossil_presences("my_fossils.csv")
+# fit_sdm(db, "Cervus_elaphus", clim, fossils = fossils)
 }
 \references{
 Kandel, A. W., Sommer, C., Kanaeva, Z., Bolus, M., Bruch, A.
