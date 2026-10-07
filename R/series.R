@@ -41,7 +41,11 @@
 #'   is, and its suitability there is that of the member furthest above its
 #'   own threshold. Modelling the union of the ranges instead lets the larger
 #'   range swamp the smaller one. `NULL` (the default) uses the merges the
-#'   region's zooarchaeological list defines.
+#'   region's zooarchaeological list defines. With a supplied `merge`, a
+#'   species listed in `species` that is a member of a merged taxon is
+#'   replaced by that taxon, so `species` can list species and `merge` group
+#'   them; a merged taxon is modelled when its name or any of its members is
+#'   in `species`. A supplied merge entry with neither draws a warning.
 #' @param fossils Optional dated fossil occurrences, in any form
 #'   [fossil_presences()] accepts, added to the training data of the species
 #'   they name (see "Fossil presences" in [fit_sdm()]). Name the fitted
@@ -52,7 +56,9 @@
 #'   aborts the run.
 #' @param quiet Suppress per-species progress.
 #' @param ... Further arguments passed to [fit_sdm()], e.g. `predictors`,
-#'   `n_presence` or `threshold`.
+#'   `n_presence`, `threshold`, `maxnet_background` or `regmult` (MaxEnt's
+#'   regularization multiplier, e.g. `regmult = 2` for smoother response
+#'   curves). They apply to every species in the run.
 #' @return A `richcast_series`:
 #'   * `richness`: one row per slice (`present` first) with mean, median and
 #'     maximum richness over the region, and `mean_expected` (deprecated, see
@@ -92,8 +98,29 @@ run_hindcast_series <- function(db,
   # The species list defaults to the region's zooarchaeological record, and
   # the 10-degree rule is not optional: a list can only narrow it.
   species <- normalise_species(species %||% default_taxa(region))
+  merge_given <- !is.null(merge)
   merge <- merge %||% zooarch_merges(region)
   names(merge) <- normalise_species(names(merge))
+  # With a supplied merge, members listed in `species` are replaced by their
+  # merged taxon, so species can be listed as they are and merged in one step.
+  if (merge_given) {
+    member_of <- unlist(lapply(names(merge), function(t) {
+      stats::setNames(rep(t, length(merge[[t]])), normalise_species(merge[[t]]))
+    }))
+    direct <- intersect(species, names(member_of))
+    if (length(direct) > 0) {
+      species <- unique(ifelse(species %in% names(member_of), member_of[species], species))
+      if (!quiet) {
+        cli::cli_inform(c("i" = "Merged into {.val {unique(member_of[direct])}}: {.val {direct}}."))
+      }
+    }
+    unused <- setdiff(names(merge), species)
+    if (length(unused) > 0) {
+      cli::cli_warn(c(
+        "{.arg merge} {cli::qty(unused)}entr{?y/ies} with no name or member in {.arg species}, ignored: {.val {unused}}."
+      ))
+    }
+  }
   taxa <- stats::setNames(lapply(species, function(t) {
     normalise_species(merge[[t]] %||% t)
   }), species)
@@ -206,6 +233,10 @@ run_hindcast_series <- function(db,
   surfaces <- list()
   richness <- lapply(keys, function(k) {
     s <- stack_finish(stacks[[k]])
+    # Counts and sums inherit the first climate layer's metadata (variable
+    # name, time stamp), which would mislabel the richness surface.
+    terra::time(s) <- NULL
+    terra::varnames(s) <- ""
     if (stacks[[k]]$n == 0) {
       cli::cli_warn(c(
         "No species contributed at {k}.",
@@ -270,6 +301,10 @@ models_table <- function(fits) {
       threshold     = f$threshold,
       present_cells = f$present_cells
     )
+    if (!is.null(f$regmult) && f$regmult != 1) out$regmult <- f$regmult
+    if (identical(f$maxnet_background, "extent")) {
+      out$n_maxnet_background <- f$n_maxnet_background
+    }
     if (!is.null(f$n_fossil)) out$n_fossil <- f$n_fossil
     for (i in seq_len(nrow(m))) {
       out[[paste0("auc_", m$model[i])]] <- m$auc[i]

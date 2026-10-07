@@ -168,8 +168,10 @@ m
 
 The study extent is the range's bounding box widened by 30% of its diagonal.
 Inside it, 100 pseudo-presences are drawn from the range polygon and 1000
-background points from the rest of the extent. A random forest and MaxEnt are
-each fitted to those points, and their predictions are averaged. The tenth
+pseudo-absences from the rest of the extent. The random forest is fitted to
+those points; MaxEnt contrasts the pseudo-presences with background drawn
+from the whole extent, inside the range as well (`maxnet_background`). Their
+predictions are averaged. The tenth
 percentile of ensemble suitability at the presences (`p10`) sets the
 presence threshold.
 

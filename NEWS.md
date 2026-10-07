@@ -1,5 +1,23 @@
 # richcast (development version)
 
+* **MaxEnt background**: `fit_sdm()` gains `maxnet_background`. The default,
+  `"extent"`, trains MaxEnt against background drawn from every land cell of
+  the study extent, inside the range as well (up to `n_maxnet_background`,
+  10,000), its own presence-versus-background design; the random forest keeps
+  its pseudo-absences. `"outside"` reproduces earlier runs, in which MaxEnt
+  used the pseudo-absences too. Both members are still scored on the same
+  pseudo-presence/pseudo-absence hold-out. **This changes the default fits.**
+* `fit_sdm()` gains `regmult`, MaxEnt's regularization multiplier (1, as
+  before). Both options pass through `run_hindcast_series()` and are
+  recorded on each model.
+* `run_hindcast_series()`: with a supplied `merge`, species listed in
+  `species` that belong to a merged taxon are replaced by that taxon, so
+  `species` can list species and `merge` group them. A supplied merge entry
+  with neither its name nor a member in `species` draws a warning instead of
+  being ignored silently.
+* Richness surfaces no longer carry the first climate layer's variable name
+  and time stamp.
+
 * `vignette("middle-east")` now reads richness over the Levantine corridor
   (34-37.5 E, 29.5-37 N) instead of a 2 x 2 focus area on Mediterranean
   Israel: mean taxa per land cell at p10 and TSS, and each taxon's share of
