@@ -32,7 +32,7 @@ file.copy(file.path(analysis, "middle-east.Rmd"), "vignettes", overwrite = TRUE)
 figs <- list.files(analysis, pattern = "^middle-east-.*\\.png$", full.names = TRUE)
 file.copy(figs, "vignettes", overwrite = TRUE)
 
-# --- quickstart.Rmd.orig ------------------------------------------------------
+# --- richcast-quickstart.Rmd.orig ------------------------------------------------------
 # Knitted in its own folder, laid out as the vignette describes:
 #
 #   analysis/quickstart/
@@ -51,9 +51,9 @@ qlib <- file.path(qs, "lib")
 dir.create(qlib, showWarnings = FALSE)
 install.packages(".", lib = qlib, repos = NULL, type = "source", quiet = TRUE)
 .libPaths(c(normalizePath(qlib), .libPaths()))
-file.copy("vignettes/quickstart.Rmd.orig", qs, overwrite = TRUE)
+file.copy("vignettes/richcast-quickstart.Rmd.orig", qs, overwrite = TRUE)
 old <- setwd(qs)
-knitr::knit("quickstart.Rmd.orig", "quickstart.Rmd")
+knitr::knit("richcast-quickstart.Rmd.orig", "richcast-quickstart.Rmd")
 setwd(old)
-file.copy(file.path(qs, "quickstart.Rmd"), "vignettes", overwrite = TRUE)
-file.copy(list.files(qs, pattern = "^quickstart-.*\\.png$", full.names = TRUE), "vignettes", overwrite = TRUE)
+file.copy(file.path(qs, "richcast-quickstart.Rmd"), "vignettes", overwrite = TRUE)
+file.copy(list.files(qs, pattern = "^richcast-quickstart-.*\\.png$", full.names = TRUE), "vignettes", overwrite = TRUE)
