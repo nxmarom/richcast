@@ -1,5 +1,8 @@
 # richcast (development version)
 
+* New `vignette("quickstart")`: a skeletal workflow (IUCN folder, a few Levantine
+  species merged into taxa, five Beyer2020 slices, a richness map and a point
+  query). Precomputed, like the Middle East vignette (`vignettes/precompute.R`).
 * **MaxEnt background**: `fit_sdm()` gains `maxnet_background`. The default,
   `"extent"`, trains MaxEnt against background drawn from every land cell of
   the study extent, inside the range as well (up to `n_maxnet_background`,

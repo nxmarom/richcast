@@ -31,3 +31,29 @@ setwd(old)
 file.copy(file.path(analysis, "middle-east.Rmd"), "vignettes", overwrite = TRUE)
 figs <- list.files(analysis, pattern = "^middle-east-.*\\.png$", full.names = TRUE)
 file.copy(figs, "vignettes", overwrite = TRUE)
+
+# --- quickstart.Rmd.orig ------------------------------------------------------
+# Knitted in its own folder, laid out as the vignette describes:
+#
+#   analysis/quickstart/
+#     geo_data/   IUCN downloads (here a symlink to UngulatePolygons)
+#     beyer/      climate slices (here a symlink to the Middle East folder's)
+#     lib/        this checkout of richcast
+qs <- "analysis/quickstart"
+dir.create(qs, showWarnings = FALSE)
+if (!file.exists(file.path(qs, "geo_data"))) {
+  file.symlink(normalizePath("UngulatePolygons"), file.path(qs, "geo_data"))
+}
+if (!file.exists(file.path(qs, "beyer"))) {
+  file.symlink(normalizePath(file.path(analysis, "beyer")), file.path(qs, "beyer"))
+}
+qlib <- file.path(qs, "lib")
+dir.create(qlib, showWarnings = FALSE)
+install.packages(".", lib = qlib, repos = NULL, type = "source", quiet = TRUE)
+.libPaths(c(normalizePath(qlib), .libPaths()))
+file.copy("vignettes/quickstart.Rmd.orig", qs, overwrite = TRUE)
+old <- setwd(qs)
+knitr::knit("quickstart.Rmd.orig", "quickstart.Rmd")
+setwd(old)
+file.copy(file.path(qs, "quickstart.Rmd"), "vignettes", overwrite = TRUE)
+file.copy(list.files(qs, pattern = "^quickstart-.*\\.png$", full.names = TRUE), "vignettes", overwrite = TRUE)
