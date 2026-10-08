@@ -42,7 +42,7 @@ db <- build_taxon_db(
   iucn_folder("geo_data")
   )
 #> ℹ Reading 4 range files from 'geo_data'
-#> ✔ Reading 4 range files from 'geo_data' [622ms]
+#> ✔ Reading 4 range files from 'geo_data' [604ms]
 #> 
 #> ℹ Dissolving 664 features into 196 species ranges.
 
@@ -130,7 +130,7 @@ clim
 #> 71 slices: -118050 to 950 CE
 ```
 
-That's the main dish, so to speak. Species that belong to a merged taxon are folded into it, so `species` can simply list the species.
+Now the model. Species that belong to a merged taxon are folded into it, so `species` can simply list the species.
 
 
 ``` r

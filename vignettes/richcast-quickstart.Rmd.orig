@@ -86,7 +86,7 @@ clim <- prepare_climate(
 clim
 ```
 
-That's the main dish, so to speak. Species that belong to a merged taxon are folded into it, so `species` can simply list the species.
+Now the model. Species that belong to a merged taxon are folded into it, so `species` can simply list the species.
 
 ```{r}
 res <- run_hindcast_series(
