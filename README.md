@@ -14,7 +14,11 @@ results into richness surfaces. You can then ask what the richness was, and
 which species were expected, anywhere in the region at any slice.
 
 The reference manual is [`richcast-manual.pdf`](richcast-manual.pdf); a worked
-analysis is in `vignette("middle-east")`.
+analysis is in `vignette("middle-east")`; and a simple application of the pipeline is in `vignette("richcast-quickstart")`
+
+A methodological note with validation and sensitivity analyses is available in:
+
+Marom, N. (2026). richcast: hindcasting species richness from range maps and palaeoclimate, tested against Levantine and European prehistoric records. Zenodo. https://doi.org/10.5281/zenodo.23238934
 
 ## Installation
 
